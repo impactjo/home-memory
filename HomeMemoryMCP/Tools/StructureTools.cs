@@ -1,0 +1,337 @@
+﻿using System.ComponentModel;
+using System.Text;
+using ModelContextProtocol.Server;
+using HomeMemory.MCP.Db;
+
+namespace HomeMemory.MCP.Tools;
+
+[McpServerToolType]
+public static class StructureTools
+{
+    [McpServerTool(Name = "get_structure_overview")]
+    [Description(
+        "Entry point: shows the building skeleton. " +
+        "Elements are physical items (installed equipment, appliances, furniture, fixtures, tools, " +
+        "structural components) organised in a location hierarchy (building → floor → room → wall → item). " +
+        "Default (structuralAreasOnly=true): only structural area elements – i.e. elements whose category is marked " +
+        "as structural area category (building, floor, room, outdoor area, etc.). " +
+        "Structural area elements are navigable containers, not devices or components. " +
+        "Returns ~60 elements, ideal as a first overview or to find the right path for " +
+        "subsequent find_element/list_elements calls. " +
+        "With structuralAreasOnly=false and 'under': preferred way to browse all content of a specific area " +
+        "(e.g. 'What is in the basement?') – no result limit, full hierarchical tree, " +
+        "more efficient than multiple find_element calls. " +
+        "With 'under': restrict tree to a sub-path, e.g. 'House/GF/Office' – " +
+        "shows only elements within that area, depth relative to that root.")]
+    public static string GetStructureOverview(
+        [Description("Show only structural area elements (structural area category). Default: true.")] bool structuralAreasOnly = true,
+        [Description("Maximum depth (relative to 'under' if specified). Default: auto – 3 for building overview; unlimited (full tree) when browsing area content (under + structuralAreasOnly=false).")] int maxDepth = 0,
+        [Description("Restrict tree to this sub-path, e.g. 'House/GF/Office'. Empty = entire building.")] string under = "")
+    {
+        under = under.Trim().TrimEnd('/');
+        int depthOffset = under.Length == 0 ? 0 : under.Count(c => c == '/');
+
+        try
+        {
+            using var conn = FirebirdDb.OpenConnection();
+
+            if (!string.IsNullOrEmpty(under))
+            {
+                var resolved = QueryHelpers.ResolveElementFullName(conn, under);
+                if (resolved is null)
+                    return $"Error: element '{under}' not found. Call get_structure_overview or find_element to find the correct path.";
+                under = resolved;
+                depthOffset = under.Count(c => c == '/');
+            }
+
+            List<Row> rows;
+            string title;
+
+            if (structuralAreasOnly)
+            {
+                var sql = new StringBuilder($"""
+                    {SqlQueries.EtreeCte}
+                    SELECT et.FULLNAME, et."Name", et."ShortName", et.DEPTH, cat."Name" AS CATNAME
+                    FROM ETREE et
+                    JOIN "CItem"    ci  ON ci."Oid"  = et."Oid"
+                    JOIN "Category" cat ON cat."Oid" = ci."Category"
+                    WHERE cat."IsAreaCategory" = True
+                    """);
+                var paramList = new List<object?>();
+                if (!string.IsNullOrEmpty(under))
+                {
+                    sql.Append(" AND (UPPER(et.FULLNAME) LIKE UPPER(?) OR UPPER(et.FULLNAME) = UPPER(?))");
+                    paramList.Add(under + "/%");
+                    paramList.Add(under);
+                }
+                sql.Append(" ORDER BY et.SORTPATH");
+                rows  = FirebirdDb.ExecuteQuery(conn, sql.ToString(), paramList.ToArray());
+                title = $"Building structure (areas{(under.Length > 0 ? $" under '{under}'" : "")}):";
+            }
+            else
+            {
+                int effectiveMaxDepth = maxDepth <= 0
+                    ? (under.Length > 0 ? 99 : 3)
+                    : maxDepth;
+                int absMaxDepth = depthOffset + effectiveMaxDepth;
+                var sql = new StringBuilder($"""
+                    {SqlQueries.EtreeCte}
+                    SELECT FULLNAME, "Name", "ShortName", DEPTH, NULL AS CATNAME
+                    FROM ETREE
+                    WHERE DEPTH <= {absMaxDepth}
+                    """);
+                var paramList = new List<object?>();
+                if (!string.IsNullOrEmpty(under))
+                {
+                    sql.Append(" AND (UPPER(FULLNAME) LIKE UPPER(?) OR UPPER(FULLNAME) = UPPER(?))");
+                    paramList.Add(under + "/%");
+                    paramList.Add(under);
+                }
+                sql.Append(" ORDER BY SORTPATH");
+                rows  = FirebirdDb.ExecuteQuery(conn, sql.ToString(), paramList.ToArray());
+                var depthLabel = maxDepth <= 0 && under.Length > 0 ? "full tree" : $"depth {effectiveMaxDepth}";
+                title = $"Building structure ({depthLabel}{(under.Length > 0 ? $" under '{under}'" : "")}):";
+            }
+
+            if (rows.Count == 0)
+                return "No elements found.";
+
+            var lines = new List<string> { $"{title}\n" };
+            foreach (var row in rows)
+            {
+                int relDepth = Convert.ToInt32(row["DEPTH"]) - depthOffset;
+                var indent = new string(' ', relDepth * 2);
+                var icon   = relDepth == 0 ? "[]" : (relDepth == 1 ? "+-" : " -");
+                var label  = FirebirdDb.Str(row["Name"]);
+                var sn     = FirebirdDb.Str(row.GetValueOrDefault("ShortName"));
+                if (!string.IsNullOrEmpty(sn) && sn != label)
+                    label += $" ({sn})";
+                if (structuralAreasOnly && FirebirdDb.Str(row.GetValueOrDefault("CATNAME")) == "E-Verteiler")
+                    label += "  [E-Verteiler]";
+                lines.Add($"{indent}{icon} {label}");
+            }
+
+            lines.Add("");
+            lines.Add(structuralAreasOnly
+                ? $"Total: {rows.Count} areas"
+                : $"Total: {rows.Count} elements");
+            return string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            return $"Error: {ex.Message}";
+        }
+    }
+
+    [McpServerTool(Name = "find_element")]
+    [Description(
+        "Searches ALL elements by name or full path (partial text, case-insensitive). Up to 50 results. " +
+        "Elements are physical items at a location: installed equipment (socket, boiler, radiator), " +
+        "appliances (washing machine, fridge), furniture (sofa, wardrobe), fixtures, tools, " +
+        "and structural area containers (building, floor, room, wall). " +
+        "With 'status': filter by status name (partial match) or by status type name " +
+        "(Existing / Planned / Removed – works even when actual status names are in another language). " +
+        "Call list_statuses for available status names. " +
+        "With 'under': restrict search to a sub-tree – more efficient and token-saving " +
+        "than a global search. At least one of searchTerm, under, or status must be provided. " +
+        "Not suitable for browsing all content of an area – for that use get_structure_overview(under=..., structuralAreasOnly=false) which returns a complete tree without a result limit. " +
+        "Note: physical lines (pipes, cables, conduits) are often documented as connections, not elements – " +
+        "also call get_connections with searchTerm when searching for cables, pipes, or conduits.")]
+    public static string FindElement(
+        [Description("Search term, e.g. 'socket'. Empty = all elements (only useful with under or status).")] string searchTerm = "",
+        [Description("Path filter: only elements below this path, e.g. 'House/FF' or 'House/GF/Office'.")] string under = "",
+        [Description("Status filter: only elements with this status, e.g. 'Planned'. Partial match. Call list_statuses for names.")] string status = "")
+    {
+        searchTerm = searchTerm.Trim();
+        under      = under.Trim().TrimEnd('/');
+        status     = status.Trim();
+
+        if (string.IsNullOrEmpty(searchTerm) && string.IsNullOrEmpty(under) && string.IsNullOrEmpty(status))
+            return "Error: provide at least one of searchTerm, under, or status.";
+
+        try
+        {
+            using var conn = FirebirdDb.OpenConnection();
+
+            if (!string.IsNullOrEmpty(under))
+            {
+                var resolved = QueryHelpers.ResolveElementFullName(conn, under);
+                if (resolved is null)
+                    return $"Error: element '{under}' not found. Call get_structure_overview or find_element to find the correct path.";
+                under = resolved;
+            }
+
+            var conditions = new List<string>();
+            var paramList  = new List<object?>();
+
+            if (!string.IsNullOrEmpty(searchTerm))
+            {
+                conditions.Add("(UPPER(et.\"Name\") LIKE ? OR UPPER(et.FULLNAME) LIKE ?)");
+                var term = $"%{searchTerm.ToUpperInvariant()}%";
+                paramList.Add(term);
+                paramList.Add(term);
+            }
+            if (!string.IsNullOrEmpty(under))
+            {
+                conditions.Add("UPPER(et.FULLNAME) LIKE UPPER(?)");
+                paramList.Add(under + "/%");
+            }
+            if (!string.IsNullOrEmpty(status))
+            {
+                // Allow filtering by status type name (Existing/Planned/Removed) in addition to status name.
+                // LLMs naturally use type names when users say "removed" or "planned" –
+                // even when actual status names are language-specific (e.g. "Entfernt-Ausgetauscht").
+                int? statusTypeFilter = status.Trim().ToLowerInvariant() switch
+                {
+                    "existing"                        => 0,
+                    "planned"                         => 1,
+                    "removed" or "decommissioned"     => 2,
+                    _                                 => (int?)null
+                };
+                if (statusTypeFilter.HasValue)
+                {
+                    conditions.Add("s.\"StatusType\" = ?");
+                    paramList.Add(statusTypeFilter.Value);
+                }
+                else
+                {
+                    conditions.Add("UPPER(s.\"Name\") LIKE UPPER(?)");
+                    paramList.Add($"%{status.ToUpperInvariant()}%");
+                }
+            }
+
+            var where = string.Join(" AND ", conditions);
+            var sql   = $"""
+                {SqlQueries.EtreeCte}
+                SELECT FIRST 50 et.FULLNAME, et."Name", et."Position", s."Name" AS STATUSNAME
+                FROM ETREE et
+                LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
+                LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
+                WHERE {where}
+                ORDER BY et.FULLNAME
+                """;
+            var rows = FirebirdDb.ExecuteQuery(conn, sql, paramList.ToArray());
+
+            var desc   = !string.IsNullOrEmpty(searchTerm) ? $"'{searchTerm}'" : "all elements";
+            var scope  = !string.IsNullOrEmpty(under)  ? $" under '{under}'"        : "";
+            var stFilt = !string.IsNullOrEmpty(status) ? $" with status '{status}'" : "";
+
+            if (rows.Count == 0)
+                return $"No elements found for {desc}{scope}{stFilt}.";
+
+            var lines = new List<string> { $"{rows.Count} result(s) for {desc}{scope}{stFilt}:\n" };
+
+            string? currentParent = null;
+            foreach (var row in rows)
+            {
+                var fullname  = FirebirdDb.Str(row["FULLNAME"]);
+                int lastSlash = fullname.LastIndexOf('/');
+                string parent, name;
+                if (lastSlash >= 0)
+                {
+                    parent = fullname[..(lastSlash + 1)];
+                    name   = fullname[(lastSlash + 1)..];
+                }
+                else
+                {
+                    parent = "";
+                    name   = fullname;
+                }
+
+                if (parent != currentParent)
+                {
+                    lines.Add(!string.IsNullOrEmpty(parent) ? $"  {parent}" : "");
+                    currentParent = parent;
+                }
+
+                var indent     = !string.IsNullOrEmpty(parent) ? "    " : "  ";
+                var pos        = FirebirdDb.Str(row.GetValueOrDefault("Position"));
+                var statusName = FirebirdDb.Str(row.GetValueOrDefault("STATUSNAME"));
+                var suffix     = "";
+                if (!string.IsNullOrEmpty(pos))        suffix += $"  [{pos}]";
+                if (!string.IsNullOrEmpty(statusName)) suffix += $"  {{{statusName}}}";
+                lines.Add($"{indent}{name}{suffix}");
+            }
+            return string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            return $"Error: {ex.Message}";
+        }
+    }
+
+    [McpServerTool(Name = "list_elements")]
+    [Description(
+        "Lists the direct child elements of an element – both structural area elements " +
+        "(rooms, areas) and devices/components. Shows exactly one level of children. " +
+        "Best for: 'What is in the kitchen?' or 'What rooms are on the ground floor?' " +
+        "when the exact parent path is already known. " +
+        "Unlike get_structure_overview (hierarchical tree) or find_element (search by name), " +
+        "this returns a flat list of immediate children only.")]
+    public static string ListElements(
+        [Description("Full name of the parent element (e.g. 'House/GF/Kitchen'). Empty = top-level.")] string parentFullname = "")
+    {
+        try
+        {
+            using var conn = FirebirdDb.OpenConnection();
+
+            if (!string.IsNullOrWhiteSpace(parentFullname))
+            {
+                var resolved = QueryHelpers.ResolveElementFullName(conn, parentFullname.Trim());
+                if (resolved is null)
+                    return $"Error: element '{parentFullname.Trim()}' not found. Call get_structure_overview or find_element to find the correct path.";
+                parentFullname = resolved;
+            }
+
+            List<Row> rows;
+            string title;
+
+            if (string.IsNullOrWhiteSpace(parentFullname))
+            {
+                var sql = $"""
+                    {SqlQueries.EtreeCte}
+                    SELECT FULLNAME, "Name", "ShortName", "Position"
+                    FROM ETREE
+                    WHERE DEPTH = 0
+                    ORDER BY "SortIndex" NULLS LAST, "Name"
+                    """;
+                rows  = FirebirdDb.ExecuteQuery(conn, sql);
+                title = "Top-level elements";
+            }
+            else
+            {
+                var sql = $"""
+                    {SqlQueries.EtreeCte}
+                    SELECT child.FULLNAME, child."Name", child."ShortName", child."Position"
+                    FROM ETREE parent
+                    JOIN ETREE child ON child."PartOfElement" = parent."Oid"
+                    WHERE UPPER(parent.FULLNAME) = UPPER(?)
+                    ORDER BY child."SortIndex" NULLS LAST, child."Name"
+                    """;
+                rows  = FirebirdDb.ExecuteQuery(conn, sql, parentFullname.Trim());
+                title = $"Children of '{parentFullname}'";
+            }
+
+            if (rows.Count == 0)
+                return "No elements found.";
+
+            var lines = new List<string> { $"{title} ({rows.Count} items):\n" };
+            foreach (var row in rows)
+            {
+                var label = FirebirdDb.Str(row["Name"]);
+                var sn    = FirebirdDb.Str(row.GetValueOrDefault("ShortName"));
+                if (!string.IsNullOrEmpty(sn) && sn != label)
+                    label += $" ({sn})";
+                lines.Add($"  - {FirebirdDb.Str(row["FULLNAME"])}  [{label}]");
+                var pos = FirebirdDb.Str(row.GetValueOrDefault("Position"));
+                if (!string.IsNullOrEmpty(pos))
+                    lines.Add($"      Position: {pos}");
+            }
+            return string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            return $"Error: {ex.Message}";
+        }
+    }
+}

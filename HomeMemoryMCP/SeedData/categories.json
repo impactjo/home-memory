@@ -1,0 +1,263 @@
+[
+  {
+    "name": "Area",
+    "shortName": null,
+    "isStructuralArea": true,
+    "children": [
+      {
+        "name": "Building",
+        "shortName": null,
+        "isStructuralArea": true,
+        "children": [
+          { "name": "Apartment",   "shortName": null, "isStructuralArea": true,  "children": [] },
+          { "name": "Balcony",     "shortName": null, "isStructuralArea": true,  "children": [] },
+          { "name": "Carport",     "shortName": null, "isStructuralArea": true,  "children": [] },
+          { "name": "Ceiling Area","shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Facade Area", "shortName": null, "isStructuralArea": true,  "children": [] },
+          { "name": "Floor",       "shortName": null, "isStructuralArea": true,  "children": [] },
+          { "name": "Floor Area",  "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Garage",      "shortName": null, "isStructuralArea": true,  "children": [] },
+          { "name": "House",       "shortName": null, "isStructuralArea": true,  "children": [] },
+          { "name": "Other Area",  "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Roof Area",   "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Room",        "shortName": null, "isStructuralArea": true,  "children": [] },
+          { "name": "Wall Area",   "shortName": null, "isStructuralArea": false, "children": [] }
+        ]
+      },
+      {
+        "name": "Outdoor Area",
+        "shortName": null,
+        "isStructuralArea": true,
+        "children": [
+          { "name": "Driveway Area",  "shortName": null, "isStructuralArea": true, "children": [] },
+          { "name": "Entrance Area",  "shortName": null, "isStructuralArea": true, "children": [] },
+          { "name": "Garden Area",    "shortName": null, "isStructuralArea": true, "children": [] },
+          { "name": "Garden Shed",    "shortName": null, "isStructuralArea": true, "children": [] },
+          { "name": "Greenhouse",     "shortName": null, "isStructuralArea": true, "children": [] },
+          { "name": "Other Area",     "shortName": null, "isStructuralArea": true, "children": [] },
+          { "name": "Parking Space",  "shortName": null, "isStructuralArea": true, "children": [] },
+          { "name": "Pool Area",      "shortName": null, "isStructuralArea": true, "children": [] },
+          { "name": "Terrace Area",   "shortName": null, "isStructuralArea": true, "children": [] }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Building Material",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": [
+      { "name": "Door",          "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Flooring",      "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Pipe",          "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Roof",          "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Roof Drainage", "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Stairs",        "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Wall",          "shortName": null, "isStructuralArea": false, "children": [] },
+      {
+        "name": "Window",
+        "shortName": null,
+        "isStructuralArea": false,
+        "children": [
+          { "name": "Shading", "shortName": null, "isStructuralArea": false, "children": [] }
+        ]
+      },
+      { "name": "Other",         "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "Electrical",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": [
+      { "name": "Cable",       "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Conduit",     "shortName": null, "isStructuralArea": false, "children": [] },
+      {
+        "name": "Distribution Board",
+        "shortName": null,
+        "isStructuralArea": false,
+        "children": [
+          { "name": "Circuit Breaker", "shortName": null, "isStructuralArea": false, "children": [] },
+          {
+            "name": "Panel Section",
+            "shortName": null,
+            "isStructuralArea": false,
+            "children": [
+              { "name": "Panel Field", "shortName": null, "isStructuralArea": false, "children": [] },
+              { "name": "Panel Row",   "shortName": null, "isStructuralArea": false, "children": [] }
+            ]
+          },
+          { "name": "Terminal Block",  "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Other",           "shortName": null, "isStructuralArea": false, "children": [] }
+        ]
+      },
+      {
+        "name": "Home Automation",
+        "shortName": null,
+        "isStructuralArea": false,
+        "children": [
+          { "name": "Actuator",        "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Control Panel",   "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Data Cable",      "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Gateway",         "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Motion Detector", "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Push Button",     "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Sensor",          "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Other",           "shortName": null, "isStructuralArea": false, "children": [] }
+        ]
+      },
+      { "name": "Junction Box", "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Lighting",     "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Meter",        "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Outlet",       "shortName": null, "isStructuralArea": false, "children": [] },
+      {
+        "name": "Photovoltaics",
+        "shortName": "PV",
+        "isStructuralArea": false,
+        "children": [
+          { "name": "Battery Storage", "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Inverter",        "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Solar Panel",     "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Other",           "shortName": null, "isStructuralArea": false, "children": [] }
+        ]
+      },
+      { "name": "Switch",       "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Wallbox",      "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Other",        "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "Heating, Ventilation & Air Conditioning",
+    "shortName": "HVAC",
+    "isStructuralArea": false,
+    "children": [
+      { "name": "Air Conditioning", "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Heating",          "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Ventilation",      "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "Plumbing",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": [
+      { "name": "Drainage",          "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Gas Supply",        "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Sanitary Fixtures", "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Water Supply",      "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "IT & Communications",
+    "shortName": "ITC",
+    "isStructuralArea": false,
+    "children": [
+      { "name": "Network",          "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Telephony",        "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "TV & Multimedia",  "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "Security",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": [
+      { "name": "Access Control", "shortName": null, "isStructuralArea": false, "children": [] },
+      {
+        "name": "Burglar Alarm",
+        "shortName": null,
+        "isStructuralArea": false,
+        "children": [
+          { "name": "Perimeter Protection", "shortName": null, "isStructuralArea": false, "children": [] }
+        ]
+      },
+      {
+        "name": "Fire Protection",
+        "shortName": null,
+        "isStructuralArea": false,
+        "children": [
+          { "name": "Fire Suppression", "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Smoke Detector",   "shortName": null, "isStructuralArea": false, "children": [] }
+        ]
+      },
+      { "name": "Surveillance", "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "Landscaping",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": [
+      { "name": "Decking",  "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Fence",    "shortName": null, "isStructuralArea": false, "children": [] },
+      {
+        "name": "Irrigation",
+        "shortName": null,
+        "isStructuralArea": false,
+        "children": [
+          { "name": "Distribution", "shortName": null, "isStructuralArea": false, "children": [] },
+          { "name": "Sprinkler",    "shortName": null, "isStructuralArea": false, "children": [] }
+        ]
+      },
+      { "name": "Paving",   "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Planting", "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Pool",     "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Other",    "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "Health",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": [
+      { "name": "First Aid",       "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Medical Devices", "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Medications",     "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "Household",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": [
+      { "name": "Appliances",      "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Electronics",     "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Furniture",       "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Provisions",      "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Toys & Hobbies",  "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Valuables",       "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Other",           "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "Sports & Leisure",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": []
+  },
+  {
+    "name": "Vehicles",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": [
+      { "name": "Bicycle",    "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Car",        "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "E-Bike",     "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Motorcycle", "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Trailer",    "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Other",      "shortName": null, "isStructuralArea": false, "children": [] }
+    ]
+  },
+  {
+    "name": "Tools",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": []
+  },
+  {
+    "name": "Other",
+    "shortName": null,
+    "isStructuralArea": false,
+    "children": []
+  }
+]

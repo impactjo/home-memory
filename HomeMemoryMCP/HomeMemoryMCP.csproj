@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>HomeMemory.MCP</RootNamespace>
+    <AssemblyName>HomeMemoryMCP</AssemblyName>
+    <Version>0.1.1</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" Version="0.9.0-preview.1" />
+    <PackageReference Include="FirebirdSql.Data.FirebirdClient" Version="10.3.4" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="SeedData\categories.json" />
+    <EmbeddedResource Include="SeedData\statuses.json" />
+    <EmbeddedResource Include="SeedData\elements.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Blank schema DB shipped next to the exe; copied to AppData on first run -->
+    <Content Include="SeedData\template.scd">
+      <Link>template.scd</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

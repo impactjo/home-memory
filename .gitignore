@@ -1,0 +1,26 @@
+# Build output
+bin/
+obj/
+publish/
+release/
+
+# NuGet
+*.nupkg
+**/packages/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+launchSettings.json
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store

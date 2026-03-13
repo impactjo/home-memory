@@ -1,0 +1,5 @@
+[
+  { "name": "Existing",  "type": 0 },
+  { "name": "Planned",   "type": 1 },
+  { "name": "Removed",   "type": 2 }
+]
