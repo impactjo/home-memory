@@ -222,7 +222,7 @@
     "children": [
       { "name": "Appliances",      "shortName": null, "isStructuralArea": false, "children": [] },
       { "name": "Electronics",     "shortName": null, "isStructuralArea": false, "children": [] },
-      { "name": "Furniture",       "shortName": null, "isStructuralArea": false, "children": [] },
+      { "name": "Furnishings",     "shortName": null, "isStructuralArea": false, "children": [] },
       { "name": "Provisions",      "shortName": null, "isStructuralArea": false, "children": [] },
       { "name": "Toys & Hobbies",  "shortName": null, "isStructuralArea": false, "children": [] },
       { "name": "Valuables",       "shortName": null, "isStructuralArea": false, "children": [] },

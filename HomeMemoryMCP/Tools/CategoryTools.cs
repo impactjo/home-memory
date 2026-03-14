@@ -43,8 +43,7 @@ public static class CategoryTools
         "and connections (physical lines: pipes, cables, ducts). " +
         "IMPORTANT: Call this before create_element or create_connection to pick the right category. " +
         "If no suitable category exists, use create_category first. " +
-        "Shows trade/device categories (Electrical, Plumbing, Network, ...) separately from " +
-        "area categories (structural area categories: Building, Floor, Room, ...). " +
+        "Structural area categories (Building, Floor, Room, ...) are marked with [structural area]. " +
         "When a category has a short name, its path segment uses that short name " +
         "(e.g. short name 'PV' → path 'PV', not 'Photovoltaics'). " +
         "The exact path to use in update_category and delete_category is shown as [path: ...] " +
@@ -54,46 +53,35 @@ public static class CategoryTools
         try
         {
             using var conn = FirebirdDb.OpenConnection();
-            var rows     = LoadCatTree(conn);
-            var gewerke  = rows.Where(r => !FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"))).ToList();
-            var bereiche = rows.Where(r =>  FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"))).ToList();
+            var rows = LoadCatTree(conn);
 
-            List<string> RenderRows(List<Row> items)
+            var lines = new List<string> { "Object categories:\n" };
+            foreach (var r in rows)
             {
-                var lines = new List<string>();
-                foreach (var r in items)
-                {
-                    int depth  = Convert.ToInt32(r.GetValueOrDefault("CAT_DEPTH") ?? 0);
-                    var indent = new string(' ', depth * 2);
-                    var icon    = depth > 0 ? "+-" : "-";
-                    var name    = FirebirdDb.Str(r["Name"]);
-                    var sn      = FirebirdDb.Str(r.GetValueOrDefault("ShortName"));
-                    var label   = !string.IsNullOrEmpty(sn) && sn != name ? $"{name} ({sn})" : name;
-                    long e = Convert.ToInt64(r.GetValueOrDefault("ELEM_COUNT") ?? 0L);
-                    long c = Convert.ToInt64(r.GetValueOrDefault("CONN_COUNT") ?? 0L);
-                    var parts = new List<string>();
-                    if (e > 0) parts.Add($"{e} elem.");
-                    if (c > 0) parts.Add($"{c} conn.");
-                    var countStr = parts.Count > 0 ? $"  ({string.Join(", ", parts)})" : "";
-                    var descFlag = !string.IsNullOrEmpty(FirebirdDb.Str(r.GetValueOrDefault("Description"))) ? "  [i]" : "";
-                    // Show explicit path when ShortName changes the path segment (prevents copy-paste errors)
-                    var catFullname = FirebirdDb.Str(r.GetValueOrDefault("CAT_FULLNAME"));
-                    var pathHint = !string.IsNullOrEmpty(sn) && sn != name
-                        ? $"  [path: {catFullname}]"
-                        : "";
-                    lines.Add($"  {indent}{icon} {label}{pathHint}{countStr}{descFlag}");
-                }
-                return lines;
+                int depth  = Convert.ToInt32(r.GetValueOrDefault("CAT_DEPTH") ?? 0);
+                var indent = new string(' ', depth * 2);
+                var icon   = depth > 0 ? "+-" : "-";
+                var name   = FirebirdDb.Str(r["Name"]);
+                var sn     = FirebirdDb.Str(r.GetValueOrDefault("ShortName"));
+                var label  = !string.IsNullOrEmpty(sn) && sn != name ? $"{name} ({sn})" : name;
+                bool isStructuralArea = FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"));
+                long e = Convert.ToInt64(r.GetValueOrDefault("ELEM_COUNT") ?? 0L);
+                long c = Convert.ToInt64(r.GetValueOrDefault("CONN_COUNT") ?? 0L);
+                var parts = new List<string>();
+                if (e > 0) parts.Add($"{e} elem.");
+                if (c > 0) parts.Add($"{c} conn.");
+                var countStr = parts.Count > 0 ? $"  ({string.Join(", ", parts)})" : "";
+                var descFlag = !string.IsNullOrEmpty(FirebirdDb.Str(r.GetValueOrDefault("Description"))) ? "  [i]" : "";
+                var areaFlag = isStructuralArea ? "  [structural area]" : "";
+                // Show explicit path when ShortName changes the path segment (prevents copy-paste errors)
+                var catFullname = FirebirdDb.Str(r.GetValueOrDefault("CAT_FULLNAME"));
+                var pathHint = !string.IsNullOrEmpty(sn) && sn != name
+                    ? $"  [path: {catFullname}]"
+                    : "";
+                lines.Add($"  {indent}{icon} {label}{areaFlag}{pathHint}{countStr}{descFlag}");
             }
-
-            var result = new List<string> { "Object categories:\n" };
-            result.Add("  Trade categories (for get_by_category / get_connections):");
-            result.AddRange(RenderRows(gewerke));
-            result.Add("");
-            result.Add("  Area categories (structural containers):");
-            result.AddRange(RenderRows(bereiche));
-            result.Add("\n  [i] = description available");
-            return string.Join("\n", result);
+            lines.Add("\n  [i] = description available");
+            return string.Join("\n", lines);
         }
         catch (Exception ex)
         {
@@ -237,9 +225,10 @@ public static class CategoryTools
 
     [McpServerTool(Name = "update_category")]
     [Description(
-        "Updates an existing object category: rename, change short name, description, or move to a different parent. " +
+        "Updates an existing object category: rename, change short name, description, structural area flag, or move to a different parent. " +
         "Required: category (current full path, e.g. 'Electrical/Lighting'). " +
         "Optional: new_name, new_short_name (CLEAR to remove), description (CLEAR to remove), " +
+        "is_structural_area ('true' or 'false'), " +
         "new_parent (full category path, e.g. 'Electrical'; CLEAR to move to top-level). " +
         "At least one optional field must be provided. " +
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab. " +
@@ -250,14 +239,15 @@ public static class CategoryTools
         [Description("New name (optional).")] string? new_name = null,
         [Description("New short name (optional). Use 'CLEAR' to remove.")] string? new_short_name = null,
         [Description("New description (optional). Use 'CLEAR' to remove.")] string? description = null,
+        [Description("Set to 'true' to mark as structural area (navigable container like Room/Floor), 'false' to unmark.")] string? is_structural_area = null,
         [Description("New parent category full path (optional). Use 'CLEAR' to move to top-level.")] string? new_parent = null)
     {
         category = category?.Trim() ?? "";
         if (string.IsNullOrEmpty(category))
             return "Error: 'category' is required.";
 
-        if (new_name == null && new_short_name == null && description == null && new_parent == null)
-            return "Error: provide at least one of new_name, new_short_name, description, new_parent.";
+        if (new_name == null && new_short_name == null && description == null && is_structural_area == null && new_parent == null)
+            return "Error: provide at least one of new_name, new_short_name, description, is_structural_area, new_parent.";
 
         // Validate new_name
         if (new_name != null)
@@ -409,12 +399,27 @@ public static class CategoryTools
                         oid);
                 }
 
+                bool? newIsArea = is_structural_area == null
+                    ? null
+                    : is_structural_area.Trim().ToLowerInvariant() is "true" or "1" or "yes";
+                if (newIsArea.HasValue)
+                {
+                    FirebirdDb.ExecuteNonQuery(conn, txn, """
+                        UPDATE "Category"
+                        SET "IsAreaCategory" = ?
+                        WHERE "Oid" = ?
+                        """,
+                        newIsArea.Value,
+                        oid);
+                }
+
                 txn.Commit();
 
                 var changes = new List<string>();
                 if (new_name != null)       changes.Add($"name → '{effectiveName}'");
                 if (new_short_name != null) changes.Add(clearShortName ? "short_name → (removed)" : $"short_name → '{effectiveSN}'");
                 if (description != null)    changes.Add(clearDescription ? "description → (removed)" : "description updated");
+                if (newIsArea.HasValue)     changes.Add($"is_structural_area → {newIsArea.Value.ToString().ToLower()}");
                 if (clearParent || new_parent != null)
                     changes.Add(effectiveParentOid == null ? "parent → (top-level)" : $"parent → '{new_parent}'");
 
@@ -447,7 +452,7 @@ public static class CategoryTools
         [Description("Full path of the parent category, e.g. 'Heating' or 'Electrical/Low-Voltage'. Empty = top-level.")] string? parent = null,
         [Description("Short name (optional), used as path segment, e.g. 'Pool'")] string? short_name = null,
         [Description("Description of this category (optional)")] string? description = null,
-        [Description("True for structural area categories (Building, Floor, Room). False (default) for trade/device categories or surface zones (Wall Section, Ceiling Section).")] bool is_structural_area = false)
+        [Description("Set to 'true' for structural area categories (Building, Floor, Room). Omit or set to 'false' (default) for trade/device categories or surface zones (Wall Section, Ceiling Section).")] string? is_structural_area = null)
     {
         name = name?.Trim() ?? "";
         if (string.IsNullOrEmpty(name))
@@ -542,7 +547,7 @@ public static class CategoryTools
                     """,
                     oid, name,
                     (object?)short_name              ?? DBNull.Value,
-                    is_structural_area,
+                    is_structural_area?.Trim().ToLowerInvariant() is "true" or "1" or "yes",
                     (object?)parentOid               ?? DBNull.Value);
 
                 txn.Commit();

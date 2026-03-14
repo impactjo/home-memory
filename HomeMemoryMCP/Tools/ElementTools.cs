@@ -183,10 +183,9 @@ public static class ElementTools
     [Description(
         "Creates a new element. An element is any physical item in the building: " +
         "installed equipment (socket, boiler, radiator, circuit breaker), appliances (washing machine, fridge), " +
-        "furniture (sofa, wardrobe), fixtures, tools, or structural/area containers (room, wall, floor). " +
-        "Area elements (room, floor, ceiling, outdoor area, garage, etc.) are also created with this tool – " +
-        "simply choose a category that is marked as structural area category (is_structural_area=true). " +
-        "Call list_categories to see which categories are structural area categories. " +
+        "furniture (sofa, wardrobe), fixtures, tools, or structural area containers (room, wall, floor). " +
+        "Structural area elements (room, floor, ceiling, outdoor area, garage, etc.) are also created with this tool – " +
+        "simply choose a category marked [structural area] in list_categories (is_structural_area=true). " +
         "Required fields: name, category. " +
         "IMPORTANT – category workflow: call list_categories first to find the best matching category " +
         "by name or context (e.g. 'Heating' for a boiler, 'Electrical' for a socket, 'Room' for a room). " +
