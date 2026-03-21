@@ -33,6 +33,11 @@ public static class ElementTools
         {
             using var conn = FirebirdDb.OpenConnection();
 
+            var resolvedFn = QueryHelpers.ResolveElementFullName(conn, fn);
+            if (resolvedFn is null)
+                return $"Error: element '{fn}' not found. Use find_element to search for the correct path.";
+            fn = resolvedFn;
+
             var allElements = FirebirdDb.ExecuteQuery(conn,
                 $"{SqlQueries.EtreeCte} SELECT \"Oid\", FULLNAME, \"Name\", \"ShortName\", \"Position\" FROM ETREE");
 
@@ -45,7 +50,7 @@ public static class ElementTools
                 string.Equals(FirebirdDb.Str(r["FULLNAME"]), fn, StringComparison.OrdinalIgnoreCase));
 
             if (target is null)
-                return $"Element '{fn}' not found.\nTip: use find_element to search for the correct path.";
+                return $"Error: element '{fn}' not found. Use find_element to search for the correct path.";
 
             var oid    = target["Oid"];
             var oidKey = FirebirdDb.OidKey(oid);
@@ -327,7 +332,7 @@ public static class ElementTools
         "Pass 'CLEAR' to empty an optional field (status, purpose, note, description, user_manual, position, short_name). " +
         "When changing category: call list_categories first. When changing status: call list_statuses first. " +
         "CAUTION: changing 'name' or 'short_name' changes the full path of this element and all its descendants. " +
-        "IMPORTANT: ALWAYS call get_element_details before updating description, note, or user_manual. " +
+        "IMPORTANT: ALWAYS call get_element_details before updating purpose, description, note, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab.")]
     public static string UpdateElement(

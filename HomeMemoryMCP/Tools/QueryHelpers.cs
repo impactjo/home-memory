@@ -40,11 +40,12 @@ internal static class QueryHelpers
     internal static string? ResolveElementFullName(FbConnection conn, string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
+        var normalized = path.Trim().TrimEnd('/');
         var rows = FirebirdDb.ExecuteQuery(conn, $"""
             {SqlQueries.EtreeCte}
             SELECT FIRST 1 FULLNAME FROM ETREE
             WHERE UPPER(FULLNAME) = UPPER(?) OR UPPER(LONGNAME) = UPPER(?)
-            """, path.Trim(), path.Trim());
+            """, normalized, normalized);
         return rows.Count > 0 ? FirebirdDb.Str(rows[0]["FULLNAME"]) : null;
     }
 
@@ -182,9 +183,9 @@ internal static class QueryHelpers
                 ? $"Error: element has {count} attached document(s). Remove them first."
                 : null;
         }
-        catch
+        catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569)
         {
-            // Document table may not exist in all DB versions – skip silently
+            // Table or column may not exist in all DB versions – skip silently
             return null;
         }
     }
