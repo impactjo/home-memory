@@ -240,11 +240,10 @@ public static class ElementTools
             string? parentFullName = null;
             if (!string.IsNullOrWhiteSpace(parent))
             {
-                parent = parent.Trim();
-                if (!byFullName.TryGetValue(parent, out var parentRow))
+                if (!QueryHelpers.TryResolveElementRow(conn, byFullName, parent, out var parentRow, out var canonicalParent))
                     return $"Error: parent element '{parent}' not found.";
                 parentOid      = FirebirdDb.Str(parentRow["Oid"]);
-                parentFullName = FirebirdDb.Str(parentRow["FULLNAME"]); // canonical short-name path
+                parentFullName = canonicalParent;
             }
 
             category = category?.Trim() ?? "";
@@ -364,8 +363,9 @@ public static class ElementTools
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
-            if (!byFullName.TryGetValue(fullname, out var targetRow))
+            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, fullname, out var targetRow, out var canonicalFullname))
                 return $"Error: element '{fullname}' not found.";
+            fullname = canonicalFullname;
 
             var oid = FirebirdDb.Str(targetRow["Oid"]);
             var now = DateTime.UtcNow;
@@ -549,8 +549,9 @@ public static class ElementTools
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
-            if (!byFullName.TryGetValue(fullname, out var targetRow))
+            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, fullname, out var targetRow, out var canonicalFullname))
                 return $"Error: element '{fullname}' not found.";
+            fullname = canonicalFullname;
 
             var oid = FirebirdDb.Str(targetRow["Oid"]);
 
@@ -625,8 +626,9 @@ public static class ElementTools
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
-            if (!byFullName.TryGetValue(fullname, out var targetRow))
+            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, fullname, out var targetRow, out var canonicalFullname))
                 return $"Error: element '{fullname}' not found.";
+            fullname = canonicalFullname;
 
             var oid = FirebirdDb.Str(targetRow["Oid"]);
 
@@ -634,11 +636,12 @@ public static class ElementTools
             string? newParentFullName = null;
             if (!string.IsNullOrEmpty(new_parent))
             {
-                if (!byFullName.TryGetValue(new_parent, out var parentRow))
+                if (!QueryHelpers.TryResolveElementRow(conn, byFullName, new_parent, out var parentRow, out var canonicalNewParent))
                     return $"Error: new parent element '{new_parent}' not found.";
+                new_parent = canonicalNewParent;
 
                 newParentOid      = FirebirdDb.Str(parentRow["Oid"]);
-                newParentFullName = FirebirdDb.Str(parentRow["FULLNAME"]); // canonical short-name path
+                newParentFullName = canonicalNewParent;
 
                 var elementPrefix = fullname.TrimEnd('/') + "/";
                 if (new_parent.StartsWith(elementPrefix, StringComparison.OrdinalIgnoreCase) ||

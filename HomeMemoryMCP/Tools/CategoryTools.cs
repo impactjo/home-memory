@@ -130,7 +130,7 @@ public static class CategoryTools
             }
 
             if (matched.Count == 0)
-                return $"Category '{category}' not found.\nTip: call list_categories for available categories.";
+                return $"Error: category '{category}' not found. Call list_categories for available categories.";
 
             var includedOids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var m in matched)
@@ -150,20 +150,17 @@ public static class CategoryTools
             var underClause = "";
             if (!string.IsNullOrEmpty(under))
             {
-                var underCheck = FirebirdDb.ExecuteQuery(conn, $"""
-                    {SqlQueries.EtreeCte}
-                    SELECT FIRST 1 "Oid" FROM ETREE WHERE UPPER(FULLNAME) = UPPER(?)
-                    """, under);
-                if (underCheck.Count == 0)
+                var resolvedUnder = QueryHelpers.ResolveElementFullName(conn, under);
+                if (resolvedUnder is null)
                     return $"Error: element '{under}' not found. Call get_structure_overview or find_element to find the correct path.";
 
                 underClause = "AND UPPER(et.FULLNAME) LIKE UPPER(?)";
-                paramList.Add(under + "/%");
+                paramList.Add(resolvedUnder + "/%");
             }
 
             var allRows = FirebirdDb.ExecuteQuery(conn, $"""
                 {SqlQueries.EtreeCte}
-                SELECT FIRST 200 et.FULLNAME, et."Name", et."Position",
+                SELECT et.FULLNAME, et."Name", et."Position",
                        cat."Name" AS CATNAME, ci."Category" AS CAT_OID
                 FROM ETREE et
                 JOIN "CItem"    ci  ON ci."Oid"  = et."Oid"
@@ -287,6 +284,7 @@ public static class CategoryTools
                 StringComparer.OrdinalIgnoreCase);
 
             // Find the category to update
+            category = QueryHelpers.NormalizePath(category);
             if (!byFullName.TryGetValue(category, out var catRow))
                 return $"Error: category '{category}' not found. Call list_categories to see available categories.";
 
@@ -321,7 +319,7 @@ public static class CategoryTools
             }
             else if (new_parent != null)
             {
-                new_parent = new_parent.Trim();
+                new_parent = QueryHelpers.NormalizePath(new_parent);
                 if (!byFullName.TryGetValue(new_parent, out var newParentRow))
                     return $"Error: new parent category '{new_parent}' not found. Call list_categories to see available categories.";
 
@@ -371,6 +369,14 @@ public static class CategoryTools
             try
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
+                    UPDATE "CEntity" SET
+                        "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1,
+                        "UpdatedOn" = ?,
+                        "UpdatedBy" = ?
+                    WHERE "Oid" = ?
+                    """, now, "HomeMemory", oid);
+
+                FirebirdDb.ExecuteNonQuery(conn, txn, """
                     UPDATE "Category"
                     SET "Name"           = ?,
                         "ShortName"      = ?,
@@ -387,14 +393,9 @@ public static class CategoryTools
                     var effectiveDesc = clearDescription ? null : description.Trim();
                     FirebirdDb.ExecuteNonQuery(conn, txn, """
                         UPDATE "CEntity"
-                        SET "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1,
-                            "UpdatedOn"           = ?,
-                            "UpdatedBy"           = ?,
-                            "Description"         = ?
+                        SET "Description" = ?
                         WHERE "Oid" = ?
                         """,
-                        now,
-                        "HomeMemory",
                         (object?)effectiveDesc ?? DBNull.Value,
                         oid);
                 }
@@ -486,7 +487,7 @@ public static class CategoryTools
             string? parentFullName = null;
             if (!string.IsNullOrWhiteSpace(parent))
             {
-                parent = parent.Trim();
+                parent = QueryHelpers.NormalizePath(parent);
                 if (!byFullName.TryGetValue(parent, out var parentRow))
                     return $"Error: parent category '{parent}' not found. Call list_categories to see available categories.";
                 parentOid      = FirebirdDb.Str(parentRow["Oid"]);
@@ -573,7 +574,7 @@ public static class CategoryTools
         "Required: category (full path, e.g. 'Electrical/Lighting'). " +
         "Blocked if: (1) the category has child categories – ask the user how to handle them first; " +
         "(2) any element, connection, or part type references this category – " +
-        "ask the user how to handle them first (call get_by_category to find them). " +
+        "ask the user how to handle them first (use get_by_category for elements, get_connections for connections; part type references are not directly discoverable via MCP). " +
         "When deletion fails for either reason, treat it as a stop signal: report the blocked scope and ask for explicit confirmation before taking further steps. " +
         "Warning: any description stored on the category will be lost. " +
         "If the full path is not known, call list_categories first. " +
@@ -594,6 +595,7 @@ public static class CategoryTools
                 r => r,
                 StringComparer.OrdinalIgnoreCase);
 
+            category = QueryHelpers.NormalizePath(category);
             if (!byFullName.TryGetValue(category, out var catRow))
                 return $"Error: category '{category}' not found. Call list_categories to see available categories.";
 
@@ -613,8 +615,10 @@ public static class CategoryTools
             var usageCount = usageRows.Count > 0 ? Convert.ToInt64(usageRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
             if (usageCount > 0)
                 return $"Error: category '{category}' is used by {usageCount} item{(usageCount == 1 ? "" : "s")} " +
-                       "(elements/connections). Reassign or delete them first " +
-                       $"(call get_by_category('{category}') to find them).";
+                       "(elements, connections, or part types). Reassign or delete them first. " +
+                       $"To find references: call get_by_category('{category}') for elements; " +
+                       "use get_connections for connections; " +
+                       "part type references cannot be discovered via MCP tools directly.";
 
             using var txn = conn.BeginTransaction();
             try

@@ -158,12 +158,14 @@ public static class ConnectionTools
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required.";
 
+        source = string.IsNullOrWhiteSpace(source) ? null : QueryHelpers.NormalizePath(source);
+        destination = string.IsNullOrWhiteSpace(destination) ? null : QueryHelpers.NormalizePath(destination);
+
         try
         {
             using var conn = FirebirdDb.OpenConnection();
 
-            var allElements = FirebirdDb.ExecuteQuery(conn,
-                $"{SqlQueries.EtreeCte} SELECT \"Oid\", FULLNAME, LONGNAME FROM ETREE");
+            var (allElements, _, byFullName) = QueryHelpers.LoadEtree(conn);
             var oidToFn = allElements.ToDictionary(
                 r => FirebirdDb.OidKey(r["Oid"]),
                 r => FirebirdDb.Str(r["FULLNAME"]),
@@ -172,18 +174,14 @@ public static class ConnectionTools
             string? srcOid = null, dstOid = null;
             if (source != null)
             {
-                var srcRow = allElements.FirstOrDefault(r =>
-                    string.Equals(FirebirdDb.Str(r["FULLNAME"]), source.Trim(), StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(FirebirdDb.Str(r["LONGNAME"]), source.Trim(), StringComparison.OrdinalIgnoreCase));
-                if (srcRow is null) return $"Error: source element '{source}' not found.";
+                if (!QueryHelpers.TryResolveElementRow(conn, byFullName, source, out var srcRow, out _))
+                    return $"Error: source element '{source}' not found.";
                 srcOid = FirebirdDb.Str(srcRow["Oid"]);
             }
             if (destination != null)
             {
-                var dstRow = allElements.FirstOrDefault(r =>
-                    string.Equals(FirebirdDb.Str(r["FULLNAME"]), destination.Trim(), StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(FirebirdDb.Str(r["LONGNAME"]), destination.Trim(), StringComparison.OrdinalIgnoreCase));
-                if (dstRow is null) return $"Error: destination element '{destination}' not found.";
+                if (!QueryHelpers.TryResolveElementRow(conn, byFullName, destination, out var dstRow, out _))
+                    return $"Error: destination element '{destination}' not found.";
                 dstOid = FirebirdDb.Str(dstRow["Oid"]);
             }
 
@@ -285,8 +283,8 @@ public static class ConnectionTools
     {
         name        = name?.Trim()        ?? "";
         category    = category?.Trim()    ?? "";
-        source      = source?.Trim()      ?? "";
-        destination = destination?.Trim() ?? "";
+        source      = string.IsNullOrWhiteSpace(source) ? "" : QueryHelpers.NormalizePath(source);
+        destination = string.IsNullOrWhiteSpace(destination) ? "" : QueryHelpers.NormalizePath(destination);
 
         if (string.IsNullOrEmpty(name))        return "Error: 'name' is required.";
         if (string.IsNullOrEmpty(category))    return "Error: 'category' is required.";
@@ -307,9 +305,9 @@ public static class ConnectionTools
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
-            if (!byFullName.TryGetValue(source, out var srcRow))
+            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, source, out var srcRow, out var sourceFullName))
                 return $"Error: source element '{source}' not found.";
-            if (!byFullName.TryGetValue(destination, out var dstRow))
+            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, destination, out var dstRow, out var destinationFullName))
                 return $"Error: destination element '{destination}' not found.";
 
             var srcOid = FirebirdDb.Str(srcRow["Oid"]);
@@ -399,6 +397,9 @@ public static class ConnectionTools
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required to identify the connection.";
 
+        source = string.IsNullOrWhiteSpace(source) ? null : QueryHelpers.NormalizePath(source);
+        destination = string.IsNullOrWhiteSpace(destination) ? null : QueryHelpers.NormalizePath(destination);
+
         route       = Validate.NormalizeClear(route);
         length      = Validate.NormalizeClear(length);
         purpose     = Validate.NormalizeClear(purpose);
@@ -431,13 +432,13 @@ public static class ConnectionTools
                 var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
                 if (source != null)
                 {
-                    if (!byFullName.TryGetValue(source.Trim(), out var srcRow))
+                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName, source, out var srcRow, out _))
                         return $"Error: source element '{source}' not found.";
                     srcOid = FirebirdDb.Str(srcRow["Oid"]);
                 }
                 if (destination != null)
                 {
-                    if (!byFullName.TryGetValue(destination.Trim(), out var dstRow))
+                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName, destination, out var dstRow, out _))
                         return $"Error: destination element '{destination}' not found.";
                     dstOid = FirebirdDb.Str(dstRow["Oid"]);
                 }
@@ -479,13 +480,13 @@ public static class ConnectionTools
                 var (_, _, byFullName2) = QueryHelpers.LoadEtree(conn);
                 if (new_source != null)
                 {
-                    if (!byFullName2.TryGetValue(new_source.Trim(), out var row))
+                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName2, new_source, out var row, out _))
                         return $"Error: new source element '{new_source}' not found.";
                     newSrcOid = FirebirdDb.Str(row["Oid"]);
                 }
                 if (new_destination != null)
                 {
-                    if (!byFullName2.TryGetValue(new_destination.Trim(), out var row))
+                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName2, new_destination, out var row, out _))
                         return $"Error: new destination element '{new_destination}' not found.";
                     newDstOid = FirebirdDb.Str(row["Oid"]);
                 }
@@ -621,6 +622,9 @@ public static class ConnectionTools
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required.";
 
+        source = string.IsNullOrWhiteSpace(source) ? null : QueryHelpers.NormalizePath(source);
+        destination = string.IsNullOrWhiteSpace(destination) ? null : QueryHelpers.NormalizePath(destination);
+
         try
         {
             using var conn = FirebirdDb.OpenConnection();
@@ -631,13 +635,13 @@ public static class ConnectionTools
                 var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
                 if (source != null)
                 {
-                    if (!byFullName.TryGetValue(source.Trim(), out var srcRow))
+                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName, source, out var srcRow, out _))
                         return $"Error: source element '{source}' not found.";
                     srcOid = FirebirdDb.Str(srcRow["Oid"]);
                 }
                 if (destination != null)
                 {
-                    if (!byFullName.TryGetValue(destination.Trim(), out var dstRow))
+                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName, destination, out var dstRow, out _))
                         return $"Error: destination element '{destination}' not found.";
                     dstOid = FirebirdDb.Str(dstRow["Oid"]);
                 }

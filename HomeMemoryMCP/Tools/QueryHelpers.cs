@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using HomeMemory.MCP.Db;
 
 namespace HomeMemory.MCP.Tools;
@@ -32,6 +33,27 @@ internal static class QueryHelpers
         return (all, byOid, byFullName);
     }
 
+    internal static string NormalizePath(string path)
+        => path.Trim().TrimEnd('/');
+
+    internal static bool TryResolveElementRow(
+        FbConnection conn,
+        Dictionary<string, Row> byFullName,
+        string path,
+        [NotNullWhen(true)] out Row? row,
+        out string canonicalFullName)
+    {
+        row = null;
+        canonicalFullName = "";
+
+        var resolved = ResolveElementFullName(conn, path);
+        if (resolved is null)
+            return false;
+
+        canonicalFullName = resolved;
+        return byFullName.TryGetValue(resolved, out row);
+    }
+
     /// <summary>
     /// Resolves an element path to its canonical short-name FULLNAME,
     /// accepting both short-name paths (e.g. 'House/GF') and long-name paths (e.g. 'House/Ground Floor').
@@ -40,7 +62,7 @@ internal static class QueryHelpers
     internal static string? ResolveElementFullName(FbConnection conn, string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return null;
-        var normalized = path.Trim().TrimEnd('/');
+        var normalized = NormalizePath(path);
         var rows = FirebirdDb.ExecuteQuery(conn, $"""
             {SqlQueries.EtreeCte}
             SELECT FIRST 1 FULLNAME FROM ETREE
@@ -60,7 +82,7 @@ internal static class QueryHelpers
     internal static (string? Oid, string? Error) ResolveCategoryOid(FbConnection conn, string? category)
     {
         if (string.IsNullOrWhiteSpace(category)) return (null, null);
-        var upper = category.Trim().ToUpper();
+        var upper = NormalizePath(category).ToUpper();
 
         if (upper.Contains('/'))
         {
