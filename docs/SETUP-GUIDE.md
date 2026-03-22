@@ -2,7 +2,7 @@
 
 ## Using the Release (recommended)
 
-Download the release ZIP from [GitHub Releases](../../releases) and follow the [Quick Start](../README.md#quick-start) in the README. The release is a self-contained build — no .NET SDK and no Firebird installation required.
+Download the release ZIP from [GitHub Releases](../../releases) and follow the [Quick Start](../README.md#quick-start-windows) in the README. The release is a self-contained build — no .NET SDK and no Firebird installation required.
 
 ## Configuration
 
@@ -54,36 +54,25 @@ claude mcp add home-memory --scope user --env "HOME_MEMORY_DB_PATH=/path/to/my-h
 codex mcp add home-memory --env "HOME_MEMORY_DB_PATH=/path/to/my-home.scd" -- "/path/to/HomeMemoryMCP.exe"
 ```
 
-### Claude Desktop (Chat tab)
+### Claude Desktop
 
-The Chat tab in Claude Desktop uses a separate config file from Claude Code. Edit it manually and restart Claude Desktop.
+Open the **Claude menu** → **Settings** → **Developer** → **Edit Config**. This opens the correct config file regardless of how Claude Desktop was installed (Store or direct install).
 
-**Config file location:**
-
-| Platform | Path |
-|---|---|
-| Windows (Store / direct install) | `%AppData%\Claude\claude_desktop_config.json` |
-| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-
-Add the `mcpServers` entry (create the file if it doesn't exist):
+Add the `home-memory` entry inside `mcpServers` (keep any existing entries):
 
 ```json
-{
-  "mcpServers": {
-    "home-memory": {
-      "command": "C:\\path\\to\\HomeMemoryMCP.exe",
-      "args": [],
-      "env": {
-        "HOME_MEMORY_DB_PATH": "C:\\path\\to\\my-home.scd"
-      }
-    }
+"home-memory": {
+  "command": "C:\\path\\to\\HomeMemoryMCP.exe",
+  "args": [],
+  "env": {
+    "HOME_MEMORY_DB_PATH": "C:\\path\\to\\my-home.scd"
   }
 }
 ```
 
 Omit the `env` block to use the default database location (`%LOCALAPPDATA%\HomeMemory\homememory.scd`).
 
-> **Note:** The Code tab in Claude Desktop shares its configuration with Claude Code (`~/.claude.json`) and does not use this file — it picks up Home Memory automatically if you registered it with `claude mcp add`.
+> **Note:** If you register Home Memory via Claude Code (`claude mcp add`), it may also appear in the Code tab. Avoid defining the same server in both the Desktop config and Claude Code, as the Desktop configuration can override the Code tab in some versions.
 
 ### Managing registrations
 
