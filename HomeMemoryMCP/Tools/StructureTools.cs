@@ -129,8 +129,8 @@ public static class StructureTools
         "Elements are physical items at a location: installed equipment (socket, boiler, radiator), " +
         "appliances (washing machine, fridge), furniture (sofa, wardrobe), fixtures, tools, " +
         "and structural area containers (building, floor, room, wall). " +
-        "With 'status': filter by status name (partial match) or by status type name " +
-        "(Existing / Planned / Removed – works even when actual status names are in another language). " +
+        "With 'status': filter by status type name (Existing / Planned / Removed – language-independent) " +
+        "or by status name (exact match first, partial match as fallback). " +
         "Call list_statuses for available status names. " +
         "With 'under': restrict search to a sub-tree – more efficient and token-saving " +
         "than a global search. At least one of searchTerm, under, or status must be provided. " +
@@ -140,7 +140,7 @@ public static class StructureTools
     public static string FindElement(
         [Description("Search term, e.g. 'socket'. Empty = all elements (only useful with under or status).")] string searchTerm = "",
         [Description("Path filter: only elements below this path, e.g. 'House/FF' or 'House/GF/Office'.")] string under = "",
-        [Description("Status filter: only elements with this status, e.g. 'Planned'. Partial match. Call list_statuses for names.")] string status = "")
+        [Description("Status filter: 'Existing'/'Planned'/'Removed' for type-based filter; otherwise exact name match, partial match as fallback. Call list_statuses for names.")] string status = "")
     {
         searchTerm = searchTerm.Trim();
         under      = under.Trim().TrimEnd('/');
@@ -178,15 +178,15 @@ public static class StructureTools
             }
             if (!string.IsNullOrEmpty(status))
             {
-                // Allow filtering by status type name (Existing/Planned/Removed) in addition to status name.
-                // LLMs naturally use type names when users say "removed" or "planned" –
-                // even when actual status names are language-specific (e.g. "Entfernt-Ausgetauscht").
-                int? statusTypeFilter = status.Trim().ToLowerInvariant() switch
+                // Priority: 1) English type keywords, 2) exact status name, 3) LIKE fallback.
+                // Type keywords first: "Removed" always finds all Removed-type statuses regardless of language.
+                // Exact before LIKE: prevents partial bleed when names overlap (e.g. "Geplant" vs "Geplant - Maybe").
+                int? statusTypeFilter = status.ToLowerInvariant() switch
                 {
-                    "existing"                        => 0,
-                    "planned"                         => 1,
-                    "removed" or "decommissioned"     => 2,
-                    _                                 => (int?)null
+                    "existing"                    => 0,
+                    "planned"                     => 1,
+                    "removed" or "decommissioned" => 2,
+                    _                             => (int?)null
                 };
                 if (statusTypeFilter.HasValue)
                 {
@@ -195,8 +195,20 @@ public static class StructureTools
                 }
                 else
                 {
-                    conditions.Add("UPPER(s.\"Name\") LIKE UPPER(?)");
-                    paramList.Add($"%{status.ToUpperInvariant()}%");
+                    var exactCount = Convert.ToInt64(
+                        FirebirdDb.ExecuteQuery(conn,
+                            """SELECT COUNT(*) AS CNT FROM "Status" WHERE UPPER("Name") = UPPER(?)""",
+                            status)[0].GetValueOrDefault("CNT") ?? 0L);
+                    if (exactCount > 0)
+                    {
+                        conditions.Add("UPPER(s.\"Name\") = UPPER(?)");
+                        paramList.Add(status);
+                    }
+                    else
+                    {
+                        conditions.Add("UPPER(s.\"Name\") LIKE UPPER(?)");
+                        paramList.Add($"%{status.ToUpperInvariant()}%");
+                    }
                 }
             }
 

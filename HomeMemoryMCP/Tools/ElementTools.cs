@@ -240,7 +240,7 @@ public static class ElementTools
             string? parentFullName = null;
             if (!string.IsNullOrWhiteSpace(parent))
             {
-                if (!QueryHelpers.TryResolveElementRow(conn, byFullName, parent, out var parentRow, out var canonicalParent))
+                if (!QueryHelpers.TryResolveElementRow(byFullName, parent, out var parentRow, out var canonicalParent))
                     return $"Error: parent element '{parent}' not found.";
                 parentOid      = FirebirdDb.Str(parentRow["Oid"]);
                 parentFullName = canonicalParent;
@@ -363,7 +363,7 @@ public static class ElementTools
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
-            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, fullname, out var targetRow, out var canonicalFullname))
+            if (!QueryHelpers.TryResolveElementRow(byFullName, fullname, out var targetRow, out var canonicalFullname))
                 return $"Error: element '{fullname}' not found.";
             fullname = canonicalFullname;
 
@@ -549,7 +549,7 @@ public static class ElementTools
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
-            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, fullname, out var targetRow, out var canonicalFullname))
+            if (!QueryHelpers.TryResolveElementRow(byFullName, fullname, out var targetRow, out var canonicalFullname))
                 return $"Error: element '{fullname}' not found.";
             fullname = canonicalFullname;
 
@@ -578,8 +578,10 @@ public static class ElementTools
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Element"        WHERE "Oid"   = ?""", oid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Part"           WHERE "Oid"   = ?""", oid);
-                // Remove image associations before CItem (FK has no CASCADE)
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "ImagesToCItems" WHERE "CItem" = ?""", oid);
+                // Remove image associations before CItem (FK has no CASCADE).
+                // Table may not exist in all DB versions – skip silently (mirrors CollectDeleteAdvisories read-path).
+                try { FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "ImagesToCItems" WHERE "CItem" = ?""", oid); }
+                catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569) { /* table absent – skip */ }
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", oid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", oid);
                 txn.Commit();
@@ -626,7 +628,7 @@ public static class ElementTools
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
-            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, fullname, out var targetRow, out var canonicalFullname))
+            if (!QueryHelpers.TryResolveElementRow(byFullName, fullname, out var targetRow, out var canonicalFullname))
                 return $"Error: element '{fullname}' not found.";
             fullname = canonicalFullname;
 
@@ -636,7 +638,7 @@ public static class ElementTools
             string? newParentFullName = null;
             if (!string.IsNullOrEmpty(new_parent))
             {
-                if (!QueryHelpers.TryResolveElementRow(conn, byFullName, new_parent, out var parentRow, out var canonicalNewParent))
+                if (!QueryHelpers.TryResolveElementRow(byFullName, new_parent, out var parentRow, out var canonicalNewParent))
                     return $"Error: new parent element '{new_parent}' not found.";
                 new_parent = canonicalNewParent;
 

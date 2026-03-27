@@ -19,7 +19,7 @@ public static class ConnectionTools
         "Examples: get_connections('Pipe') → all pipelines; " +
         "get_connections('Cable', under='House/GF') → all cables on the ground floor. " +
         "Without category: all connections under 'under'. " +
-        "Category name: partial text is sufficient (case-insensitive). " +
+        "Category: leaf name (partial, case-insensitive) or full path with '/' (e.g. 'Electrical/Cable'). " +
         "If the exact category name is uncertain, use searchTerm first – " +
         "results show the category of each match, which you can then pass as the category parameter. " +
         "searchTerm filters by connection name (partial, case-insensitive) – " +
@@ -27,7 +27,7 @@ public static class ConnectionTools
         "Note: conduit/cable endpoints may also be documented as elements – " +
         "combine with find_element(searchTerm) for a complete picture.")]
     public static string GetConnections(
-        [Description("Connection category, e.g. 'Pipe', 'Cable', 'Bus', 'Ventilation'. Empty = all.")] string category = "",
+        [Description("Connection category: leaf name (partial, case-insensitive, e.g. 'Cable') or full path with '/' (e.g. 'Electrical/Cable'). Empty = all.")] string category = "",
         [Description("Spatial filter: connections whose source or destination is under this path.")] string under = "",
         [Description("Filter by connection name (partial match, case-insensitive), e.g. 'conduit' or 'leerrohr'.")] string searchTerm = "")
     {
@@ -60,10 +60,22 @@ public static class ConnectionTools
             var paramList = new List<object?>();
             if (!string.IsNullOrEmpty(category))
             {
-                var catPat = $"%{category.ToUpperInvariant()}%";
-                sql.Append(" AND (UPPER(cat.\"Name\") LIKE ? OR UPPER(cat.\"ShortName\") LIKE ?)");
-                paramList.Add(catPat);
-                paramList.Add(catPat);
+                if (category.Contains('/'))
+                {
+                    var (catOid, catError) = QueryHelpers.ResolveCategoryOid(conn, category);
+                    if (catError != null) return catError;
+                    if (catOid == null)
+                        return $"Error: category '{category}' not found. Call list_categories for available category names.";
+                    sql.Append(" AND ci.\"Category\" = ?");
+                    paramList.Add(catOid);
+                }
+                else
+                {
+                    var catPat = $"%{category.ToUpperInvariant()}%";
+                    sql.Append(" AND (UPPER(cat.\"Name\") LIKE ? OR UPPER(cat.\"ShortName\") LIKE ?)");
+                    paramList.Add(catPat);
+                    paramList.Add(catPat);
+                }
             }
             if (!string.IsNullOrEmpty(searchTerm))
             {
@@ -174,13 +186,13 @@ public static class ConnectionTools
             string? srcOid = null, dstOid = null;
             if (source != null)
             {
-                if (!QueryHelpers.TryResolveElementRow(conn, byFullName, source, out var srcRow, out _))
+                if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out _))
                     return $"Error: source element '{source}' not found.";
                 srcOid = FirebirdDb.Str(srcRow["Oid"]);
             }
             if (destination != null)
             {
-                if (!QueryHelpers.TryResolveElementRow(conn, byFullName, destination, out var dstRow, out _))
+                if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out _))
                     return $"Error: destination element '{destination}' not found.";
                 dstOid = FirebirdDb.Str(dstRow["Oid"]);
             }
@@ -305,9 +317,9 @@ public static class ConnectionTools
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
-            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, source, out var srcRow, out var sourceFullName))
+            if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out var sourceFullName))
                 return $"Error: source element '{source}' not found.";
-            if (!QueryHelpers.TryResolveElementRow(conn, byFullName, destination, out var dstRow, out var destinationFullName))
+            if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out var destinationFullName))
                 return $"Error: destination element '{destination}' not found.";
 
             var srcOid = FirebirdDb.Str(srcRow["Oid"]);
@@ -432,13 +444,13 @@ public static class ConnectionTools
                 var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
                 if (source != null)
                 {
-                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName, source, out var srcRow, out _))
+                    if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out _))
                         return $"Error: source element '{source}' not found.";
                     srcOid = FirebirdDb.Str(srcRow["Oid"]);
                 }
                 if (destination != null)
                 {
-                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName, destination, out var dstRow, out _))
+                    if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out _))
                         return $"Error: destination element '{destination}' not found.";
                     dstOid = FirebirdDb.Str(dstRow["Oid"]);
                 }
@@ -480,13 +492,13 @@ public static class ConnectionTools
                 var (_, _, byFullName2) = QueryHelpers.LoadEtree(conn);
                 if (new_source != null)
                 {
-                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName2, new_source, out var row, out _))
+                    if (!QueryHelpers.TryResolveElementRow(byFullName2, new_source, out var row, out _))
                         return $"Error: new source element '{new_source}' not found.";
                     newSrcOid = FirebirdDb.Str(row["Oid"]);
                 }
                 if (new_destination != null)
                 {
-                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName2, new_destination, out var row, out _))
+                    if (!QueryHelpers.TryResolveElementRow(byFullName2, new_destination, out var row, out _))
                         return $"Error: new destination element '{new_destination}' not found.";
                     newDstOid = FirebirdDb.Str(row["Oid"]);
                 }
@@ -635,13 +647,13 @@ public static class ConnectionTools
                 var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
                 if (source != null)
                 {
-                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName, source, out var srcRow, out _))
+                    if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out _))
                         return $"Error: source element '{source}' not found.";
                     srcOid = FirebirdDb.Str(srcRow["Oid"]);
                 }
                 if (destination != null)
                 {
-                    if (!QueryHelpers.TryResolveElementRow(conn, byFullName, destination, out var dstRow, out _))
+                    if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out _))
                         return $"Error: destination element '{destination}' not found.";
                     dstOid = FirebirdDb.Str(dstRow["Oid"]);
                 }
@@ -670,8 +682,10 @@ public static class ConnectionTools
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Connection"     WHERE "Oid"   = ?""", oid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Part"           WHERE "Oid"   = ?""", oid);
-                // Remove image associations before CItem (FK has no CASCADE)
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "ImagesToCItems" WHERE "CItem" = ?""", oid);
+                // Remove image associations before CItem (FK has no CASCADE).
+                // Table may not exist in all DB versions – skip silently (mirrors CollectDeleteAdvisories read-path).
+                try { FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "ImagesToCItems" WHERE "CItem" = ?""", oid); }
+                catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569) { /* table absent – skip */ }
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", oid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", oid);
                 txn.Commit();

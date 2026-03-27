@@ -95,12 +95,14 @@ public static class CategoryTools
         "Examples: get_by_category('Socket') → all sockets in the building; " +
         "get_by_category('Lighting', under='House/GF') → all lights on the ground floor. " +
         "Category name: partial text is sufficient (case-insensitive). " +
+        "Without '/', partial text may match multiple categories; results include all matched categories and their descendants. " +
+        "With '/' the full category path must match exactly (e.g. 'Electrical/Cable'). " +
         "Available categories: list_categories.")]
     public static string GetByCategory(
         [Description("Category name or partial text, e.g. 'Socket', 'Pipe', 'Network'.")] string category,
         [Description("Spatial filter: only elements below this path, e.g. 'House/GF'.")] string under = "")
     {
-        category = category.Trim();
+        category = category.Trim().TrimEnd('/');
         under    = under.Trim().TrimEnd('/');
 
         if (string.IsNullOrEmpty(category))
@@ -236,7 +238,7 @@ public static class CategoryTools
         [Description("New name (optional).")] string? new_name = null,
         [Description("New short name (optional). Use 'CLEAR' to remove.")] string? new_short_name = null,
         [Description("New description (optional). Use 'CLEAR' to remove.")] string? description = null,
-        [Description("Set to 'true' to mark as structural area (navigable container like Room/Floor), 'false' to unmark.")] string? is_structural_area = null,
+        [Description("Set to true to mark as structural area (navigable container like Room/Floor), false to unmark.")] bool? is_structural_area = null,
         [Description("New parent category full path (optional). Use 'CLEAR' to move to top-level.")] string? new_parent = null)
     {
         category = category?.Trim() ?? "";
@@ -364,6 +366,21 @@ public static class CategoryTools
                     return $"Error: a category with short name '{effectiveSN}' already exists under the same parent.";
             }
 
+            // Check effective path segment uniqueness (cross-collision: Name vs sibling ShortName and vice versa).
+            // CAT_FULLNAME uses COALESCE(NULLIF(TRIM(ShortName),''), Name) as the path segment.
+            // The Name and ShortName checks above are field-isolated; this catches the cross-field case.
+            var effectiveSegment = string.IsNullOrEmpty(effectiveSN) ? effectiveName : effectiveSN;
+            var segCheckSql = effectiveParentOid != null
+                ? """SELECT COUNT(*) AS CNT FROM "Category" WHERE UPPER(COALESCE(NULLIF(TRIM("ShortName"),''), "Name")) = UPPER(?) AND "ParentCategory" = ? AND "Oid" <> ?"""
+                : """SELECT COUNT(*) AS CNT FROM "Category" WHERE UPPER(COALESCE(NULLIF(TRIM("ShortName"),''), "Name")) = UPPER(?) AND "ParentCategory" IS NULL AND "Oid" <> ?""";
+            var segArgs = effectiveParentOid != null
+                ? new object?[] { effectiveSegment, effectiveParentOid, oid }
+                : new object?[] { effectiveSegment, oid };
+            var segRows  = FirebirdDb.ExecuteQuery(conn, segCheckSql, segArgs);
+            var segCount = segRows.Count > 0 ? Convert.ToInt64(segRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
+            if (segCount > 0)
+                return $"Error: another category with path segment '{effectiveSegment}' already exists under the same parent (would create a duplicate category path).";
+
             var now = DateTime.UtcNow;
             using var txn = conn.BeginTransaction();
             try
@@ -400,9 +417,7 @@ public static class CategoryTools
                         oid);
                 }
 
-                bool? newIsArea = is_structural_area == null
-                    ? null
-                    : is_structural_area.Trim().ToLowerInvariant() is "true" or "1" or "yes";
+                var newIsArea = is_structural_area;
                 if (newIsArea.HasValue)
                 {
                     FirebirdDb.ExecuteNonQuery(conn, txn, """
@@ -453,7 +468,7 @@ public static class CategoryTools
         [Description("Full path of the parent category, e.g. 'Heating' or 'Electrical/Low-Voltage'. Empty = top-level.")] string? parent = null,
         [Description("Short name (optional), used as path segment, e.g. 'Pool'")] string? short_name = null,
         [Description("Description of this category (optional)")] string? description = null,
-        [Description("Set to 'true' for structural area categories (Building, Floor, Room). Omit or set to 'false' (default) for trade/device categories or surface zones (Wall Section, Ceiling Section).")] string? is_structural_area = null)
+        [Description("Set to true for structural area categories (Building, Floor, Room). Omit or set to false (default) for trade/device categories or surface zones (Wall Section, Ceiling Section).")] bool? is_structural_area = null)
     {
         name = name?.Trim() ?? "";
         if (string.IsNullOrEmpty(name))
@@ -470,6 +485,8 @@ public static class CategoryTools
                   ?? Validate.Length(short_name, "short_name", 50)
                   ?? Validate.Length(description?.Trim(), "description", 4000);
         if (lenErr != null) return lenErr;
+
+        var isArea = is_structural_area ?? false;
 
         try
         {
@@ -547,9 +564,9 @@ public static class CategoryTools
                     VALUES (?, ?, ?, ?, ?)
                     """,
                     oid, name,
-                    (object?)short_name              ?? DBNull.Value,
-                    is_structural_area?.Trim().ToLowerInvariant() is "true" or "1" or "yes",
-                    (object?)parentOid               ?? DBNull.Value);
+                    (object?)short_name ?? DBNull.Value,
+                    isArea,
+                    (object?)parentOid  ?? DBNull.Value);
 
                 txn.Commit();
                 return $"✓ Category '{newFullName}' created (OID: {oid}).";

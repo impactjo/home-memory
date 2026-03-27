@@ -37,7 +37,6 @@ internal static class QueryHelpers
         => path.Trim().TrimEnd('/');
 
     internal static bool TryResolveElementRow(
-        FbConnection conn,
         Dictionary<string, Row> byFullName,
         string path,
         [NotNullWhen(true)] out Row? row,
@@ -45,13 +44,10 @@ internal static class QueryHelpers
     {
         row = null;
         canonicalFullName = "";
-
-        var resolved = ResolveElementFullName(conn, path);
-        if (resolved is null)
-            return false;
-
-        canonicalFullName = resolved;
-        return byFullName.TryGetValue(resolved, out row);
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        if (!byFullName.TryGetValue(NormalizePath(path), out row)) return false;
+        canonicalFullName = FirebirdDb.Str(row["FULLNAME"]);
+        return true;
     }
 
     /// <summary>
