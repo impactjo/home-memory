@@ -1,8 +1,10 @@
 ﻿using HomeMemory.MCP.Db;
+using HomeMemory.MCP.Tools;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using System.Text.Json;
 
 FirstRunSetup.EnsureDatabase();
 DbMigrator.MigrateDatabase();
@@ -33,7 +35,10 @@ builder.Services.AddMcpServer(options =>
             """;
     })
     .WithStdioServerTransport()
-    .WithToolsFromAssembly(typeof(Program).Assembly);
+    .WithToolsFromAssembly(typeof(Program).Assembly, new JsonSerializerOptions
+    {
+        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
+        Converters = { new FlexBoolJsonConverterFactory() }
+    });
 
 await builder.Build().RunAsync();
-
