@@ -106,6 +106,54 @@ internal static class QueryHelpers
                       $"Use the full path instead: {paths}.");
     }
 
+    /// <summary>
+    /// Resolves a category search term to OIDs of matching categories plus all their descendants.
+    /// Partial text match on Name or ShortName; path notation (with '/') = exact path match.
+    /// Returns null if no matching category is found.
+    /// </summary>
+    internal static HashSet<string>? ResolveCategoryOidsWithDescendants(FbConnection conn, string category)
+    {
+        category = NormalizePath(category);
+
+        var cats = FirebirdDb.ExecuteQuery(conn, $"""
+            {SqlQueries.CatCte}
+            SELECT "Oid", CAT_FULLNAME, "Name", "ShortName" FROM CAT_TREE ORDER BY CAT_FULLNAME
+            """);
+
+        List<Row> matched;
+        if (category.Contains('/'))
+        {
+            matched = cats.Where(c =>
+                string.Equals(FirebirdDb.Str(c["CAT_FULLNAME"]), category, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+        }
+        else
+        {
+            var upper = category.ToUpperInvariant();
+            matched = cats.Where(c =>
+                FirebirdDb.Str(c["Name"]).ToUpperInvariant().Contains(upper) ||
+                FirebirdDb.Str(c.GetValueOrDefault("ShortName")).ToUpperInvariant().Contains(upper)
+            ).ToList();
+        }
+
+        if (matched.Count == 0) return null;
+
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in matched)
+        {
+            var mFn    = FirebirdDb.Str(m["CAT_FULLNAME"]);
+            var prefix = mFn + "/";
+            foreach (var c in cats)
+            {
+                var cFn = FirebirdDb.Str(c["CAT_FULLNAME"]);
+                if (string.Equals(cFn, mFn, StringComparison.OrdinalIgnoreCase) ||
+                    cFn.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    result.Add(FirebirdDb.OidKey(c["Oid"]));
+            }
+        }
+        return result;
+    }
+
     internal static string? ResolveStatusOid(FbConnection conn, string? status)
     {
         if (string.IsNullOrWhiteSpace(status)) return null;

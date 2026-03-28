@@ -133,21 +133,23 @@ public static class StructureTools
         "or by status name (exact match first, partial match as fallback). " +
         "Call list_statuses for available status names. " +
         "With 'under': restrict search to a sub-tree – more efficient and token-saving " +
-        "than a global search. At least one of searchTerm, under, or status must be provided. " +
+        "than a global search. At least one of searchTerm, under, status, or category must be provided. " +
         "Not suitable for browsing all content of an area – for that use get_structure_overview(under=..., structuralAreasOnly=false) which returns a complete tree without a result limit. " +
         "Note: physical lines (pipes, cables, conduits) are often documented as connections, not elements – " +
         "also call get_connections with searchTerm when searching for cables, pipes, or conduits.")]
     public static string FindElement(
-        [Description("Search term, e.g. 'socket'. Empty = all elements (only useful with under or status).")] string searchTerm = "",
+        [Description("Search term, e.g. 'socket'. Empty = all elements (only useful with under, status, or category).")] string searchTerm = "",
         [Description("Path filter: only elements below this path, e.g. 'House/FF' or 'House/GF/Office'.")] string under = "",
-        [Description("Status filter: 'Existing'/'Planned'/'Removed' for type-based filter; otherwise exact name match, partial match as fallback. Call list_statuses for names.")] string status = "")
+        [Description("Status filter: 'Existing'/'Planned'/'Removed' for type-based filter; otherwise exact name match, partial match as fallback. Call list_statuses for names.")] string status = "",
+        [Description("Category filter: partial name match (e.g. 'socket'), full path with '/' (e.g. 'Electrical/Lighting'), or short name. Includes all subcategories. Call list_categories for available names.")] string category = "")
     {
         searchTerm = searchTerm.Trim();
         under      = under.Trim().TrimEnd('/');
         status     = status.Trim();
+        category   = category.Trim();
 
-        if (string.IsNullOrEmpty(searchTerm) && string.IsNullOrEmpty(under) && string.IsNullOrEmpty(status))
-            return "Error: provide at least one of searchTerm, under, or status.";
+        if (string.IsNullOrEmpty(searchTerm) && string.IsNullOrEmpty(under) && string.IsNullOrEmpty(status) && string.IsNullOrEmpty(category))
+            return "Error: provide at least one of searchTerm, under, status, or category.";
 
         try
         {
@@ -212,26 +214,51 @@ public static class StructureTools
                 }
             }
 
-            var where = string.Join(" AND ", conditions);
+            HashSet<string>? catOids = null;
+            if (!string.IsNullOrEmpty(category))
+            {
+                catOids = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category);
+                if (catOids is null || catOids.Count == 0)
+                {
+                    var desc2   = !string.IsNullOrEmpty(searchTerm) ? $"'{searchTerm}'" : "all elements";
+                    var scope2  = !string.IsNullOrEmpty(under)  ? $" under '{under}'"        : "";
+                    var stFilt2 = !string.IsNullOrEmpty(status) ? $" with status '{status}'" : "";
+                    return $"No elements found for {desc2}{scope2}{stFilt2} in category '{category}'.";
+                }
+            }
+
+            // When filtering by category, fetch with CAT_OID and apply in-memory filter (OIDs are binary in Firebird).
+            // When not filtering by category, use FIRST 51 for efficient truncation detection.
+            var catSelect = catOids is not null ? """, ci."Category" AS CAT_OID""" : "";
+            var catJoin   = catOids is not null ? """LEFT JOIN "CItem" ci ON ci."Oid" = et."Oid" """ : "";
+            var firstClause = catOids is null ? "FIRST 51 " : "";
+            var where = conditions.Count > 0 ? string.Join(" AND ", conditions) : "1=1";
             var sql   = $"""
                 {SqlQueries.EtreeCte}
-                SELECT FIRST 50 et.FULLNAME, et."Name", et."Position", s."Name" AS STATUSNAME
+                SELECT {firstClause}et.FULLNAME, et."Name", et."Position", s."Name" AS STATUSNAME{catSelect}
                 FROM ETREE et
+                {catJoin}
                 LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
                 LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
                 WHERE {where}
                 ORDER BY et.FULLNAME
                 """;
-            var rows = FirebirdDb.ExecuteQuery(conn, sql, paramList.ToArray());
+            var allRows = FirebirdDb.ExecuteQuery(conn, sql, paramList.ToArray());
+            var rows = catOids is not null
+                ? allRows.Where(r => catOids.Contains(FirebirdDb.OidKey(r.GetValueOrDefault("CAT_OID")))).ToList()
+                : allRows;
+            var truncated = rows.Count > 50;
+            if (truncated) rows = rows.Take(50).ToList();
 
             var desc   = !string.IsNullOrEmpty(searchTerm) ? $"'{searchTerm}'" : "all elements";
-            var scope  = !string.IsNullOrEmpty(under)  ? $" under '{under}'"        : "";
-            var stFilt = !string.IsNullOrEmpty(status) ? $" with status '{status}'" : "";
+            var scope  = !string.IsNullOrEmpty(under)    ? $" under '{under}'"        : "";
+            var stFilt = !string.IsNullOrEmpty(status)   ? $" with status '{status}'" : "";
+            var catFilt= !string.IsNullOrEmpty(category) ? $" in category '{category}'" : "";
 
             if (rows.Count == 0)
-                return $"No elements found for {desc}{scope}{stFilt}.";
+                return $"No elements found for {desc}{scope}{stFilt}{catFilt}.";
 
-            var lines = new List<string> { $"{rows.Count} result(s) for {desc}{scope}{stFilt}:\n" };
+            var lines = new List<string> { $"{rows.Count} result(s) for {desc}{scope}{stFilt}{catFilt}:\n" };
 
             string? currentParent = null;
             foreach (var row in rows)
@@ -264,6 +291,8 @@ public static class StructureTools
                 if (!string.IsNullOrEmpty(statusName)) suffix += $"  {{{statusName}}}";
                 lines.Add($"{indent}{name}{suffix}");
             }
+            if (truncated)
+                lines.Add("\n(Showing first 50 results – refine your search or use get_by_category / get_structure_overview for complete results.)");
             return string.Join("\n", lines);
         }
         catch (Exception ex)

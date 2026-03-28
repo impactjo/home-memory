@@ -19,7 +19,7 @@ public static class ConnectionTools
         "Examples: get_connections('Pipe') → all pipelines; " +
         "get_connections('Cable', under='House/GF') → all cables on the ground floor. " +
         "Without category: all connections under 'under'. " +
-        "Category: leaf name (partial, case-insensitive) or full path with '/' (e.g. 'Electrical/Cable'). " +
+        "Category: partial name (e.g. 'Cable'), full path (e.g. 'Electrical/Cable'), or short name – includes all subcategories. " +
         "If the exact category name is uncertain, use searchTerm first – " +
         "results show the category of each match, which you can then pass as the category parameter. " +
         "searchTerm filters by connection name (partial, case-insensitive) – " +
@@ -27,7 +27,7 @@ public static class ConnectionTools
         "Note: conduit/cable endpoints may also be documented as elements – " +
         "combine with find_element(searchTerm) for a complete picture.")]
     public static string GetConnections(
-        [Description("Connection category: leaf name (partial, case-insensitive, e.g. 'Cable') or full path with '/' (e.g. 'Electrical/Cable'). Empty = all.")] string category = "",
+        [Description("Connection category: partial name (e.g. 'Cable'), full path with '/' (e.g. 'Electrical/Cable'), or short name. Includes all subcategories. Empty = all. Call list_categories for names.")] string category = "",
         [Description("Spatial filter: connections whose source or destination is under this path.")] string under = "",
         [Description("Filter by connection name (partial match, case-insensitive), e.g. 'conduit' or 'leerrohr'.")] string searchTerm = "")
     {
@@ -49,34 +49,23 @@ public static class ConnectionTools
                 r => FirebirdDb.Str(r["FULLNAME"]),
                 StringComparer.OrdinalIgnoreCase);
 
+            HashSet<string>? catOids = null;
+            if (!string.IsNullOrEmpty(category))
+            {
+                catOids = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category);
+                if (catOids is null || catOids.Count == 0)
+                    return $"Error: category '{category}' not found. Call list_categories for available category names.";
+            }
+
             var sql = new StringBuilder("""
                 SELECT c."Name", c."Source", c."Destination", c."Route", c."Length",
-                       cat."Name" AS CATNAME
+                       cat."Name" AS CATNAME, ci."Category" AS CAT_OID
                 FROM "Connection" c
                 JOIN "CItem"    ci  ON ci."Oid"  = c."Oid"
                 JOIN "Category" cat ON cat."Oid" = ci."Category"
                 WHERE 1=1
                 """);
             var paramList = new List<object?>();
-            if (!string.IsNullOrEmpty(category))
-            {
-                if (category.Contains('/'))
-                {
-                    var (catOid, catError) = QueryHelpers.ResolveCategoryOid(conn, category);
-                    if (catError != null) return catError;
-                    if (catOid == null)
-                        return $"Error: category '{category}' not found. Call list_categories for available category names.";
-                    sql.Append(" AND ci.\"Category\" = ?");
-                    paramList.Add(catOid);
-                }
-                else
-                {
-                    var catPat = $"%{category.ToUpperInvariant()}%";
-                    sql.Append(" AND (UPPER(cat.\"Name\") LIKE ? OR UPPER(cat.\"ShortName\") LIKE ?)");
-                    paramList.Add(catPat);
-                    paramList.Add(catPat);
-                }
-            }
             if (!string.IsNullOrEmpty(searchTerm))
             {
                 sql.Append(" AND UPPER(c.\"Name\") LIKE ?");
@@ -84,7 +73,10 @@ public static class ConnectionTools
             }
             sql.Append(" ORDER BY c.\"Source\", c.\"Name\"");
 
-            var raw = FirebirdDb.ExecuteQuery(conn, sql.ToString(), paramList.ToArray());
+            var fetched = FirebirdDb.ExecuteQuery(conn, sql.ToString(), paramList.ToArray());
+            var raw = catOids is not null
+                ? fetched.Where(r => catOids.Contains(FirebirdDb.OidKey(r.GetValueOrDefault("CAT_OID")))).ToList()
+                : fetched;
 
             if (!string.IsNullOrEmpty(under))
             {
