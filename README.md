@@ -10,6 +10,10 @@
   <img src="https://img.shields.io/badge/MCP_tools-22-green.svg" alt="22 MCP Tools">
 </p>
 
+<p align="center">
+  <a href="https://home-memory.com">Website with demo video, screenshots, and examples</a>
+</p>
+
 ---
 
 Home Memory is an [MCP server](https://modelcontextprotocol.io/) that gives your AI assistant structured, persistent knowledge about your home — every room, every device, every pipe and cable, every item you own. It plugs into Claude, OpenAI Codex, or any MCP-compatible AI and turns natural conversation into a living, queryable documentation of your home and everything in it.
@@ -98,19 +102,24 @@ codex mcp add home-memory -- "C:\HomeMemory\HomeMemoryMCP.exe"
 
 1. Open Claude Desktop
 2. Click the **Claude menu** → **Settings** → **Developer** → **Edit Config**
-3. Add the `home-memory` entry inside `mcpServers` (keep any existing entries):
+3. This opens the config folder with `claude_desktop_config.json` selected — open it in any text editor
+4. Add `home-memory` inside the `"mcpServers"` object:
 
 ```json
-"home-memory": {
-  "command": "C:\\HomeMemory\\HomeMemoryMCP.exe"
+{
+  "mcpServers": {
+    "home-memory": {
+      "command": "C:\\HomeMemory\\HomeMemoryMCP.exe"
+    }
+  }
 }
 ```
 
-4. Save the file and restart Claude Desktop
+If you already have other MCP servers configured, add the `"home-memory"` entry next to them inside the existing `"mcpServers"` block.
 
-Home Memory is available in the Chat tab.
+5. Save the file and restart Claude Desktop
 
-> If you register Home Memory via Claude Code (`claude mcp add`), it may also appear in the Code tab. Avoid defining the same server in both places, as the Desktop configuration can override the Code tab in some versions.
+Home Memory is available in both the Chat tab and the Code tab. The **Code tab is recommended** — it runs in agentic mode with no tool-call limits, which works much better for MCP-heavy workflows.
 
 </details>
 
@@ -194,8 +203,7 @@ Electrical (circuits, PV, wallbox, home automation) &middot; HVAC &middot; Plumb
 | Client | Status |
 |---|---|
 | Codex App (OpenAI) | Tested, production-ready |
-| Claude Desktop (Chat tab) | Tested, production-ready |
-| Claude Desktop (Code tab) | Works via Claude Code registration; see note above |
+| Claude Desktop (Chat tab + Code tab) | Tested, production-ready |
 | Claude Code (CLI) | Tested, production-ready |
 | Codex CLI (OpenAI) | Tested, production-ready |
 | Any MCP-compatible client | Should work (stdio transport) |
@@ -223,7 +231,7 @@ Home Memory is in its early stages and we'd love to hear from you! Right now, th
 - **Share your use case** — how are you using Home Memory? What's missing?
 - **Spread the word** if you find it useful
 
-We're not accepting code contributions at this point. If you'd like to build and explore the code locally, see the [Setup Guide](docs/SETUP-GUIDE.md).
+If you'd like to build and explore the code locally, see the [Setup Guide](docs/SETUP-GUIDE.md).
 
 ## Background
 
