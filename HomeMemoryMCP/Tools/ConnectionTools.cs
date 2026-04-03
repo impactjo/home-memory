@@ -24,6 +24,7 @@ public static class ConnectionTools
         "results show the category of each match, which you can then pass as the category parameter. " +
         "searchTerm filters by connection name (partial, case-insensitive) – " +
         "use this to find connections by keyword, e.g. searchTerm='conduit' or searchTerm='leerrohr'. " +
+        "Returns up to 100 connections; refine with category, under, or searchTerm for complete results. " +
         "Note: conduit/cable endpoints may also be documented as elements – " +
         "combine with find_element(searchTerm) for a complete picture.")]
     public static string GetConnections(
@@ -104,6 +105,10 @@ public static class ConnectionTools
                 b.srcFn + FirebirdDb.Str(b.row.GetValueOrDefault("Name")),
                 StringComparison.OrdinalIgnoreCase));
 
+            var totalCount = results.Count;
+            var truncated = totalCount > 100;
+            if (truncated) results = results.Take(100).ToList();
+
             var scope   = !string.IsNullOrEmpty(under)      ? $" under '{under}'"        : "";
             var catLbl  = !string.IsNullOrEmpty(category)   ? $"'{category}'"            : "all categories";
             var termLbl = !string.IsNullOrEmpty(searchTerm) ? $" name~'{searchTerm}'"    : "";
@@ -114,7 +119,7 @@ public static class ConnectionTools
                 return $"No connections found for {catLbl}{termLbl}{scope}.{tip}";
             }
 
-            var lines = new List<string> { $"Connections {catLbl}{termLbl}{scope} ({results.Count}):\n" };
+            var lines = new List<string> { $"Connections {catLbl}{termLbl}{scope} ({results.Count}{(truncated ? $" of {totalCount}" : "")}):\n" };
 
             string? currentSrc = null;
             foreach (var (r, srcFn, dstFn) in results)
@@ -137,6 +142,8 @@ public static class ConnectionTools
                 if (!string.IsNullOrEmpty(route))
                     lines.Add($"        Route: {route}");
             }
+            if (truncated)
+                lines.Add($"\n(Showing first 100 of {totalCount} connections – narrow with category, under, or searchTerm.)");
             return string.Join("\n", lines);
         }
         catch (Exception ex)

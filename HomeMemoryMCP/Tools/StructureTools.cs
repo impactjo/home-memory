@@ -22,7 +22,8 @@ public static class StructureTools
         "(e.g. 'What is in the basement?') – no result limit, full hierarchical tree, " +
         "more efficient than multiple find_element calls. " +
         "With 'under': restrict tree to a sub-path, e.g. 'House/GF/Office' – " +
-        "shows only elements within that area, depth relative to that root.")]
+        "shows only elements within that area, depth relative to that root. " +
+        "Elements with status Planned or Removed are marked with their status name.")]
     public static string GetStructureOverview(
         [Description("Show only structural area elements (structural area category). Default: true.")] bool structuralAreasOnly = true,
         [Description("Maximum depth (relative to 'under' if specified). Default: auto – 3 for building overview; unlimited (full tree) when browsing area content (under + structuralAreasOnly=false).")] int maxDepth = 0,
@@ -51,10 +52,13 @@ public static class StructureTools
             {
                 var sql = new StringBuilder($"""
                     {SqlQueries.EtreeCte}
-                    SELECT et.FULLNAME, et."Name", et."ShortName", et.DEPTH, cat."Name" AS CATNAME
+                    SELECT et.FULLNAME, et."Name", et."ShortName", et.DEPTH, cat."Name" AS CATNAME,
+                           s."Name" AS STATUSNAME, s."StatusType" AS STATUSTYPE
                     FROM ETREE et
                     JOIN "CItem"    ci  ON ci."Oid"  = et."Oid"
                     JOIN "Category" cat ON cat."Oid" = ci."Category"
+                    LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
+                    LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
                     WHERE cat."IsAreaCategory" = True
                     """);
                 var paramList = new List<object?>();
@@ -76,18 +80,21 @@ public static class StructureTools
                 int absMaxDepth = depthOffset + effectiveMaxDepth;
                 var sql = new StringBuilder($"""
                     {SqlQueries.EtreeCte}
-                    SELECT FULLNAME, "Name", "ShortName", DEPTH, NULL AS CATNAME
-                    FROM ETREE
-                    WHERE DEPTH <= {absMaxDepth}
+                    SELECT et.FULLNAME, et."Name", et."ShortName", et.DEPTH, NULL AS CATNAME,
+                           s."Name" AS STATUSNAME, s."StatusType" AS STATUSTYPE
+                    FROM ETREE et
+                    LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
+                    LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
+                    WHERE et.DEPTH <= {absMaxDepth}
                     """);
                 var paramList = new List<object?>();
                 if (!string.IsNullOrEmpty(under))
                 {
-                    sql.Append(" AND (UPPER(FULLNAME) LIKE UPPER(?) OR UPPER(FULLNAME) = UPPER(?))");
+                    sql.Append(" AND (UPPER(et.FULLNAME) LIKE UPPER(?) OR UPPER(et.FULLNAME) = UPPER(?))");
                     paramList.Add(under + "/%");
                     paramList.Add(under);
                 }
-                sql.Append(" ORDER BY SORTPATH");
+                sql.Append(" ORDER BY et.SORTPATH");
                 rows  = FirebirdDb.ExecuteQuery(conn, sql.ToString(), paramList.ToArray());
                 var depthLabel = maxDepth <= 0 && under.Length > 0 ? "full tree" : $"depth {effectiveMaxDepth}";
                 title = $"Building structure ({depthLabel}{(under.Length > 0 ? $" under '{under}'" : "")}):";
@@ -108,6 +115,9 @@ public static class StructureTools
                     label += $" ({sn})";
                 if (structuralAreasOnly && FirebirdDb.Str(row.GetValueOrDefault("CATNAME")) == "E-Verteiler")
                     label += "  [E-Verteiler]";
+                var st = row.GetValueOrDefault("STATUSTYPE");
+                if (st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2)
+                    label += $"  {{{FirebirdDb.Str(row.GetValueOrDefault("STATUSNAME"))}}}";
                 lines.Add($"{indent}{icon} {label}");
             }
 
@@ -125,7 +135,7 @@ public static class StructureTools
 
     [McpServerTool(Name = "find_element")]
     [Description(
-        "Searches ALL elements by name or full path (partial text, case-insensitive). Up to 50 results. " +
+        "Searches ALL elements by name or full path (partial text, case-insensitive). Up to 100 results. " +
         "Elements are physical items at a location: installed equipment (socket, boiler, radiator), " +
         "appliances (washing machine, fridge), furniture (sofa, wardrobe), fixtures, tools, " +
         "and structural area containers (building, floor, room, wall). " +
@@ -228,10 +238,10 @@ public static class StructureTools
             }
 
             // When filtering by category, fetch with CAT_OID and apply in-memory filter (OIDs are binary in Firebird).
-            // When not filtering by category, use FIRST 51 for efficient truncation detection.
+            // When not filtering by category, use FIRST 101 for efficient truncation detection.
             var catSelect = catOids is not null ? """, ci."Category" AS CAT_OID""" : "";
             var catJoin   = catOids is not null ? """LEFT JOIN "CItem" ci ON ci."Oid" = et."Oid" """ : "";
-            var firstClause = catOids is null ? "FIRST 51 " : "";
+            var firstClause = catOids is null ? "FIRST 101 " : "";
             var where = conditions.Count > 0 ? string.Join(" AND ", conditions) : "1=1";
             var sql   = $"""
                 {SqlQueries.EtreeCte}
@@ -247,8 +257,9 @@ public static class StructureTools
             var rows = catOids is not null
                 ? allRows.Where(r => catOids.Contains(FirebirdDb.OidKey(r.GetValueOrDefault("CAT_OID")))).ToList()
                 : allRows;
-            var truncated = rows.Count > 50;
-            if (truncated) rows = rows.Take(50).ToList();
+            var totalCount = rows.Count;
+            var truncated = totalCount > 100;
+            if (truncated) rows = rows.Take(100).ToList();
 
             var desc   = !string.IsNullOrEmpty(searchTerm) ? $"'{searchTerm}'" : "all elements";
             var scope  = !string.IsNullOrEmpty(under)    ? $" under '{under}'"        : "";
@@ -258,7 +269,12 @@ public static class StructureTools
             if (rows.Count == 0)
                 return $"No elements found for {desc}{scope}{stFilt}{catFilt}.";
 
-            var lines = new List<string> { $"{rows.Count} result(s) for {desc}{scope}{stFilt}{catFilt}:\n" };
+            // totalCount is exact when category filter is active (in-memory filter);
+            // with FIRST 101 (no category filter) we only know there are "more than 100".
+            var countLabel = truncated
+                ? (catOids is not null ? $"100 of {totalCount}" : "100+")
+                : $"{rows.Count}";
+            var lines = new List<string> { $"{countLabel} result(s) for {desc}{scope}{stFilt}{catFilt}:\n" };
 
             string? currentParent = null;
             foreach (var row in rows)
@@ -292,7 +308,7 @@ public static class StructureTools
                 lines.Add($"{indent}{name}{suffix}");
             }
             if (truncated)
-                lines.Add("\n(Showing first 50 results – refine your search or use get_by_category / get_structure_overview for complete results.)");
+                lines.Add("\n(Showing first 100 results – refine your search or use get_by_category / get_structure_overview for complete results.)");
             return string.Join("\n", lines);
         }
         catch (Exception ex)
@@ -308,7 +324,8 @@ public static class StructureTools
         "Best for: 'What is in the kitchen?' or 'What rooms are on the ground floor?' " +
         "when the exact parent path is already known. " +
         "Unlike get_structure_overview (hierarchical tree) or find_element (search by name), " +
-        "this returns a flat list of immediate children only.")]
+        "this returns a flat list of immediate children only. " +
+        "Elements with status Planned or Removed are marked with their status name.")]
     public static string ListElements(
         [Description("Full name of the parent element (e.g. 'House/GF/Kitchen'). Empty = top-level.")] string parentFullname = "")
     {
@@ -331,10 +348,13 @@ public static class StructureTools
             {
                 var sql = $"""
                     {SqlQueries.EtreeCte}
-                    SELECT FULLNAME, "Name", "ShortName", "Position"
-                    FROM ETREE
-                    WHERE DEPTH = 0
-                    ORDER BY "SortIndex" NULLS LAST, "Name"
+                    SELECT et.FULLNAME, et."Name", et."ShortName", et."Position",
+                           s."Name" AS STATUSNAME, s."StatusType" AS STATUSTYPE
+                    FROM ETREE et
+                    LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
+                    LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
+                    WHERE et.DEPTH = 0
+                    ORDER BY et."SortIndex" NULLS LAST, et."Name"
                     """;
                 rows  = FirebirdDb.ExecuteQuery(conn, sql);
                 title = "Top-level elements";
@@ -343,9 +363,12 @@ public static class StructureTools
             {
                 var sql = $"""
                     {SqlQueries.EtreeCte}
-                    SELECT child.FULLNAME, child."Name", child."ShortName", child."Position"
+                    SELECT child.FULLNAME, child."Name", child."ShortName", child."Position",
+                           s."Name" AS STATUSNAME, s."StatusType" AS STATUSTYPE
                     FROM ETREE parent
                     JOIN ETREE child ON child."PartOfElement" = parent."Oid"
+                    LEFT JOIN "CEntity" ce ON ce."Oid" = child."Oid"
+                    LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
                     WHERE UPPER(parent.FULLNAME) = UPPER(?)
                     ORDER BY child."SortIndex" NULLS LAST, child."Name"
                     """;
@@ -363,7 +386,11 @@ public static class StructureTools
                 var sn    = FirebirdDb.Str(row.GetValueOrDefault("ShortName"));
                 if (!string.IsNullOrEmpty(sn) && sn != label)
                     label += $" ({sn})";
-                lines.Add($"  - {FirebirdDb.Str(row["FULLNAME"])}  [{label}]");
+                var st = row.GetValueOrDefault("STATUSTYPE");
+                var statusSuffix = st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2
+                    ? $"  {{{FirebirdDb.Str(row.GetValueOrDefault("STATUSNAME"))}}}"
+                    : "";
+                lines.Add($"  - {FirebirdDb.Str(row["FULLNAME"])}  [{label}]{statusSuffix}");
                 var pos = FirebirdDb.Str(row.GetValueOrDefault("Position"));
                 if (!string.IsNullOrEmpty(pos))
                     lines.Add($"      Position: {pos}");

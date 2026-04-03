@@ -97,7 +97,8 @@ public static class CategoryTools
         "Category name: partial text is sufficient (case-insensitive). " +
         "Without '/', partial text may match multiple categories; results include all matched categories and their descendants. " +
         "With '/' the full category path must match exactly (e.g. 'Electrical/Cable'). " +
-        "Available categories: list_categories.")]
+        "Available categories: list_categories. " +
+        "Elements with status Planned or Removed are marked with their status name.")]
     public static string GetByCategory(
         [Description("Category name or partial text, e.g. 'Socket', 'Pipe', 'Network'.")] string category,
         [Description("Spatial filter: only elements below this path, e.g. 'House/GF'.")] string under = "")
@@ -163,10 +164,13 @@ public static class CategoryTools
             var allRows = FirebirdDb.ExecuteQuery(conn, $"""
                 {SqlQueries.EtreeCte}
                 SELECT et.FULLNAME, et."Name", et."Position",
-                       cat."Name" AS CATNAME, ci."Category" AS CAT_OID
+                       cat."Name" AS CATNAME, ci."Category" AS CAT_OID,
+                       s."Name" AS STATUSNAME, s."StatusType" AS STATUSTYPE
                 FROM ETREE et
                 JOIN "CItem"    ci  ON ci."Oid"  = et."Oid"
                 JOIN "Category" cat ON cat."Oid" = ci."Category"
+                LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
+                LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
                 WHERE 1=1 {underClause}
                 ORDER BY et.FULLNAME
                 """, paramList.ToArray());
@@ -210,7 +214,11 @@ public static class CategoryTools
                 var pos     = FirebirdDb.Str(row.GetValueOrDefault("Position"));
                 var catHint = multiCat ? $" [{FirebirdDb.Str(row.GetValueOrDefault("CATNAME"))}]" : "";
                 var posHint = !string.IsNullOrEmpty(pos) ? $"  [{pos}]" : "";
-                lines.Add($"{indent}{name}{catHint}{posHint}");
+                var st      = row.GetValueOrDefault("STATUSTYPE");
+                var stHint  = st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2
+                    ? $"  {{{FirebirdDb.Str(row.GetValueOrDefault("STATUSNAME"))}}}"
+                    : "";
+                lines.Add($"{indent}{name}{catHint}{posHint}{stHint}");
             }
             return string.Join("\n", lines);
         }
