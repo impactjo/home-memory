@@ -108,8 +108,8 @@ internal static class QueryHelpers
 
     /// <summary>
     /// Resolves a category search term to OIDs of matching categories plus all their descendants.
-    /// Partial text match on Name or ShortName; path notation (with '/') = exact path match.
-    /// Returns null if no matching category is found.
+    /// Priority: exact Name/ShortName match first; partial text match only as fallback.
+    /// Path notation (with '/') = exact path match. Returns null if no matching category is found.
     /// </summary>
     internal static HashSet<string>? ResolveCategoryOidsWithDescendants(FbConnection conn, string category)
     {
@@ -129,11 +129,22 @@ internal static class QueryHelpers
         }
         else
         {
+            // Priority: exact Name/ShortName match first, partial (Contains) only as fallback.
+            // Prevents "Heizung" from matching parent "Heizung, Klima, Lüftung" when a
+            // child category named exactly "Heizung" exists.
             var upper = category.ToUpperInvariant();
             matched = cats.Where(c =>
-                FirebirdDb.Str(c["Name"]).ToUpperInvariant().Contains(upper) ||
-                FirebirdDb.Str(c.GetValueOrDefault("ShortName")).ToUpperInvariant().Contains(upper)
+                string.Equals(FirebirdDb.Str(c["Name"]).ToUpperInvariant(), upper, StringComparison.Ordinal) ||
+                string.Equals(FirebirdDb.Str(c.GetValueOrDefault("ShortName")).ToUpperInvariant(), upper, StringComparison.Ordinal)
             ).ToList();
+
+            if (matched.Count == 0)
+            {
+                matched = cats.Where(c =>
+                    FirebirdDb.Str(c["Name"]).ToUpperInvariant().Contains(upper) ||
+                    FirebirdDb.Str(c.GetValueOrDefault("ShortName")).ToUpperInvariant().Contains(upper)
+                ).ToList();
+            }
         }
 
         if (matched.Count == 0) return null;
