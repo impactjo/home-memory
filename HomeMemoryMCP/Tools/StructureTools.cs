@@ -207,10 +207,10 @@ public static class StructureTools
                 }
                 else
                 {
-                    var exactCount = Convert.ToInt64(
+                    var exactCount = FirebirdDb.CountResult(
                         FirebirdDb.ExecuteQuery(conn,
                             """SELECT COUNT(*) AS CNT FROM "Status" WHERE UPPER("Name") = UPPER(?)""",
-                            status)[0].GetValueOrDefault("CNT") ?? 0L);
+                            status));
                     if (exactCount > 0)
                     {
                         conditions.Add("UPPER(s.\"Name\") = UPPER(?)");
@@ -279,19 +279,8 @@ public static class StructureTools
             string? currentParent = null;
             foreach (var row in rows)
             {
-                var fullname  = FirebirdDb.Str(row["FULLNAME"]);
-                int lastSlash = fullname.LastIndexOf('/');
-                string parent, name;
-                if (lastSlash >= 0)
-                {
-                    parent = fullname[..(lastSlash + 1)];
-                    name   = fullname[(lastSlash + 1)..];
-                }
-                else
-                {
-                    parent = "";
-                    name   = fullname;
-                }
+                var fullname       = FirebirdDb.Str(row["FULLNAME"]);
+                var (parent, name) = QueryHelpers.SplitParentAndName(fullname);
 
                 if (parent != currentParent)
                 {

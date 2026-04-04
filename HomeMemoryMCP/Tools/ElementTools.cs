@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.RegularExpressions;
 using ModelContextProtocol.Server;
 using HomeMemory.MCP.Db;
 
@@ -8,9 +7,6 @@ namespace HomeMemory.MCP.Tools;
 [McpServerToolType]
 public static class ElementTools
 {
-    // Forbidden characters for element/short names (from RegExValidation.SpecialCharactersNotAllowed)
-    // $*[{}|\<>?/";\: and tab
-    private static readonly Regex InvalidCharsElement = new(@"[\$\*\[\{\]\}\|\\<>\?/"";\:\t]");
 
     // ── get_element_details ───────────────────────────────────────────────────
 
@@ -212,15 +208,21 @@ public static class ElementTools
         [Description("User-facing information: operating instructions, feature overview, maintenance schedule (what/when/how), troubleshooting tips (optional). Only fill with information the user explicitly provided.")] string? user_manual = null,
         [Description("Position within the element (optional)")] string? position = null)
     {
-        name = name?.Trim() ?? "";
+        name = Validate.NormalizeSingleline(name)?.Trim() ?? "";
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required.";
-        if (InvalidCharsElement.IsMatch(name))
+        if (Validate.InvalidChars.IsMatch(name))
             return "Error: name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
 
-        short_name = string.IsNullOrWhiteSpace(short_name) ? null : short_name.Trim();
-        if (short_name != null && InvalidCharsElement.IsMatch(short_name))
+        short_name = string.IsNullOrWhiteSpace(short_name) ? null : Validate.NormalizeSingleline(short_name)?.Trim();
+        if (short_name != null && Validate.InvalidChars.IsMatch(short_name))
             return "Error: short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+
+        purpose     = Validate.NormalizeSingleline(purpose);
+        note        = Validate.NormalizeSingleline(note);
+        description = Validate.NormalizeMultiline(description);
+        user_manual = Validate.NormalizeMultiline(user_manual);
+        position    = Validate.NormalizeSingleline(position);
 
         var lenErr = Validate.Length(name, "name", 100)
                   ?? Validate.Length(short_name, "short_name", 50)
@@ -358,6 +360,12 @@ public static class ElementTools
         user_manual = Validate.NormalizeClear(user_manual);
         position    = Validate.NormalizeClear(position);
 
+        purpose     = Validate.NormalizeSingleline(purpose);
+        note        = Validate.NormalizeSingleline(note);
+        description = Validate.NormalizeMultiline(description);
+        user_manual = Validate.NormalizeMultiline(user_manual);
+        position    = Validate.NormalizeSingleline(position);
+
         try
         {
             using var conn = FirebirdDb.OpenConnection();
@@ -372,18 +380,18 @@ public static class ElementTools
 
             if (name != null)
             {
-                name = name.Trim();
+                name = Validate.NormalizeSingleline(name)?.Trim();
                 if (string.IsNullOrEmpty(name))
                     return "Error: 'name' cannot be empty.";
-                if (InvalidCharsElement.IsMatch(name))
+                if (Validate.InvalidChars.IsMatch(name))
                     return "Error: name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
             }
             if (short_name != null && short_name != "CLEAR")
             {
-                short_name = short_name.Trim();
+                short_name = Validate.NormalizeSingleline(short_name)?.Trim();
                 if (string.IsNullOrEmpty(short_name))
                     return "Error: 'short_name' cannot be empty – use 'CLEAR' to remove it.";
-                if (InvalidCharsElement.IsMatch(short_name))
+                if (Validate.InvalidChars.IsMatch(short_name))
                     return "Error: short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
             }
 
@@ -409,9 +417,8 @@ public static class ElementTools
                                  : (string?)FirebirdDb.Str(cur.GetValueOrDefault("ShortName")).NullIfEmpty();
                 var segment      = string.IsNullOrEmpty(newShortName) ? newName : newShortName;
 
-                var lastSlash    = fullname.LastIndexOf('/');
-                var parentPrefix = lastSlash >= 0 ? fullname[..lastSlash] + "/" : "";
-                var newFullName  = parentPrefix + segment;
+                var (parentPrefix, _) = QueryHelpers.SplitParentAndName(fullname);
+                var newFullName       = parentPrefix + segment;
 
                 if (!string.Equals(newFullName, fullname, StringComparison.OrdinalIgnoreCase)
                     && byFullName.ContainsKey(newFullName))
@@ -555,16 +562,16 @@ public static class ElementTools
 
             var oid = FirebirdDb.Str(targetRow["Oid"]);
 
-            var children = FirebirdDb.ExecuteQuery(conn,
+            var children   = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "Element" WHERE "PartOfElement" = ?""", oid);
-            var childCount = Convert.ToInt64(children.Count > 0 ? children[0].GetValueOrDefault("CNT") ?? 0L : 0L);
+            var childCount = FirebirdDb.CountResult(children);
             if (childCount > 0)
                 return $"Error: element has {childCount} child element(s). Report this to the user and ask for explicit confirmation before removing any of them.";
 
             var connections = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "Connection" WHERE "Source" = ? OR "Destination" = ?""",
                 oid, oid);
-            var connCount = Convert.ToInt64(connections.Count > 0 ? connections[0].GetValueOrDefault("CNT") ?? 0L : 0L);
+            var connCount = FirebirdDb.CountResult(connections);
             if (connCount > 0)
                 return $"Error: element has {connCount} connection(s). Report this to the user and ask for explicit confirmation before removing any of them.";
 
@@ -651,8 +658,7 @@ public static class ElementTools
                     return $"Error: cannot move '{fullname}' into itself or one of its descendants.";
             }
 
-            var lastSlash   = fullname.LastIndexOf('/');
-            var segmentName = lastSlash >= 0 ? fullname[(lastSlash + 1)..] : fullname;
+            var (_, segmentName) = QueryHelpers.SplitParentAndName(fullname);
             var newFullName = newParentFullName != null
                 ? $"{newParentFullName}/{segmentName}"
                 : segmentName;

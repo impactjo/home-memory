@@ -1,5 +1,4 @@
 ﻿using System.ComponentModel;
-using System.Text.RegularExpressions;
 using ModelContextProtocol.Server;
 using HomeMemory.MCP.Db;
 
@@ -8,8 +7,6 @@ namespace HomeMemory.MCP.Tools;
 [McpServerToolType]
 public static class CategoryTools
 {
-    // Same forbidden characters as element names (SpecialCharactersNotAllowed)
-    private static readonly Regex InvalidChars = new(@"[\$\*\[\{\]\}\|\\<>\?/"";\:\t]");
 
     // ── Shared Helper ─────────────────────────────────────────────────────────
 
@@ -190,19 +187,8 @@ public static class CategoryTools
             string? currentParent = null;
             foreach (var row in rows)
             {
-                var fullname  = FirebirdDb.Str(row["FULLNAME"]);
-                int lastSlash = fullname.LastIndexOf('/');
-                string parent, name;
-                if (lastSlash >= 0)
-                {
-                    parent = fullname[..(lastSlash + 1)];
-                    name   = fullname[(lastSlash + 1)..];
-                }
-                else
-                {
-                    parent = "";
-                    name   = fullname;
-                }
+                var fullname          = FirebirdDb.Str(row["FULLNAME"]);
+                var (parent, name)    = QueryHelpers.SplitParentAndName(fullname);
 
                 if (parent != currentParent)
                 {
@@ -259,10 +245,10 @@ public static class CategoryTools
         // Validate new_name
         if (new_name != null)
         {
-            new_name = new_name.Trim();
+            new_name = Validate.NormalizeSingleline(new_name)?.Trim();
             if (string.IsNullOrEmpty(new_name))
                 return "Error: 'new_name' cannot be empty.";
-            if (InvalidChars.IsMatch(new_name))
+            if (Validate.InvalidChars.IsMatch(new_name))
                 return "Error: new_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
         }
 
@@ -270,13 +256,15 @@ public static class CategoryTools
         bool clearShortName = new_short_name?.Trim().Equals("CLEAR", StringComparison.OrdinalIgnoreCase) == true;
         if (!clearShortName && new_short_name != null)
         {
-            new_short_name = new_short_name.Trim();
-            if (InvalidChars.IsMatch(new_short_name))
+            new_short_name = Validate.NormalizeSingleline(new_short_name)!.Trim();
+            if (Validate.InvalidChars.IsMatch(new_short_name))
                 return "Error: new_short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
         }
 
         bool clearDescription = description?.Trim().Equals("CLEAR", StringComparison.OrdinalIgnoreCase) == true;
         bool clearParent      = new_parent?.Trim().Equals("CLEAR", StringComparison.OrdinalIgnoreCase) == true;
+
+        description = Validate.NormalizeMultiline(description);
 
         // Field length validation
         var lenErr = Validate.Length(new_name, "new_name", 100)
@@ -354,9 +342,8 @@ public static class CategoryTools
             var nameArgs = effectiveParentOid != null
                 ? new object?[] { effectiveName, effectiveParentOid, oid }
                 : new object?[] { effectiveName, oid };
-            var nameRows  = FirebirdDb.ExecuteQuery(conn, nameCheckSql, nameArgs);
-            var nameCount = nameRows.Count > 0 ? Convert.ToInt64(nameRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-            if (nameCount > 0)
+            var nameRows = FirebirdDb.ExecuteQuery(conn, nameCheckSql, nameArgs);
+            if (FirebirdDb.CountResult(nameRows) > 0)
                 return $"Error: a category named '{effectiveName}' already exists under the same parent.";
 
             // Check ShortName + effectiveParent uniqueness (if non-null, excluding self)
@@ -368,9 +355,8 @@ public static class CategoryTools
                 var snArgs = effectiveParentOid != null
                     ? new object?[] { effectiveSN, effectiveParentOid, oid }
                     : new object?[] { effectiveSN, oid };
-                var snRows  = FirebirdDb.ExecuteQuery(conn, snCheckSql, snArgs);
-                var snCount = snRows.Count > 0 ? Convert.ToInt64(snRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-                if (snCount > 0)
+                var snRows = FirebirdDb.ExecuteQuery(conn, snCheckSql, snArgs);
+                if (FirebirdDb.CountResult(snRows) > 0)
                     return $"Error: a category with short name '{effectiveSN}' already exists under the same parent.";
             }
 
@@ -384,9 +370,8 @@ public static class CategoryTools
             var segArgs = effectiveParentOid != null
                 ? new object?[] { effectiveSegment, effectiveParentOid, oid }
                 : new object?[] { effectiveSegment, oid };
-            var segRows  = FirebirdDb.ExecuteQuery(conn, segCheckSql, segArgs);
-            var segCount = segRows.Count > 0 ? Convert.ToInt64(segRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-            if (segCount > 0)
+            var segRows = FirebirdDb.ExecuteQuery(conn, segCheckSql, segArgs);
+            if (FirebirdDb.CountResult(segRows) > 0)
                 return $"Error: another category with path segment '{effectiveSegment}' already exists under the same parent (would create a duplicate category path).";
 
             var now = DateTime.UtcNow;
@@ -478,15 +463,17 @@ public static class CategoryTools
         [Description("Description of this category (optional)")] string? description = null,
         [Description("Set to true for structural area categories (Building, Floor, Room). Omit or set to false (default) for trade/device categories or surface zones (Wall Section, Ceiling Section).")] bool? is_structural_area = null)
     {
-        name = name?.Trim() ?? "";
+        name = Validate.NormalizeSingleline(name)?.Trim() ?? "";
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required.";
-        if (InvalidChars.IsMatch(name))
+        if (Validate.InvalidChars.IsMatch(name))
             return "Error: name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
 
-        short_name = string.IsNullOrWhiteSpace(short_name) ? null : short_name.Trim();
-        if (short_name != null && InvalidChars.IsMatch(short_name))
+        short_name = string.IsNullOrWhiteSpace(short_name) ? null : Validate.NormalizeSingleline(short_name)?.Trim();
+        if (short_name != null && Validate.InvalidChars.IsMatch(short_name))
             return "Error: short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+
+        description = Validate.NormalizeMultiline(description);
 
         // Field length validation
         var lenErr = Validate.Length(name, "name", 100)
@@ -532,9 +519,8 @@ public static class CategoryTools
             var nameArgs = parentOid != null
                 ? new object?[] { name, parentOid }
                 : new object?[] { name };
-            var nameRows  = FirebirdDb.ExecuteQuery(conn, nameCheckSql, nameArgs);
-            var nameCount = nameRows.Count > 0 ? Convert.ToInt64(nameRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-            if (nameCount > 0)
+            var nameRows = FirebirdDb.ExecuteQuery(conn, nameCheckSql, nameArgs);
+            if (FirebirdDb.CountResult(nameRows) > 0)
                 return $"Error: a category named '{name}' already exists under the same parent.";
 
             // Check ShortName + ParentCategory uniqueness (skip if empty)
@@ -546,9 +532,8 @@ public static class CategoryTools
                 var snArgs = parentOid != null
                     ? new object?[] { short_name, parentOid }
                     : new object?[] { short_name };
-                var snRows  = FirebirdDb.ExecuteQuery(conn, snCheckSql, snArgs);
-                var snCount = snRows.Count > 0 ? Convert.ToInt64(snRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-                if (snCount > 0)
+                var snRows = FirebirdDb.ExecuteQuery(conn, snCheckSql, snArgs);
+                if (FirebirdDb.CountResult(snRows) > 0)
                     return $"Error: a category with short name '{short_name}' already exists under the same parent.";
             }
 
@@ -629,7 +614,7 @@ public static class CategoryTools
             // Blocking check 1: child categories
             var childRows  = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "Category" WHERE "ParentCategory" = ?""", oid);
-            var childCount = childRows.Count > 0 ? Convert.ToInt64(childRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
+            var childCount = FirebirdDb.CountResult(childRows);
             if (childCount > 0)
                 return $"Error: category '{category}' has {childCount} child categor{(childCount == 1 ? "y" : "ies")}. " +
                        "Delete or move child categories first.";
@@ -637,7 +622,7 @@ public static class CategoryTools
             // Blocking check 2: CItem references (elements, connections, and part types)
             var usageRows  = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "CItem" WHERE "Category" = ?""", oid);
-            var usageCount = usageRows.Count > 0 ? Convert.ToInt64(usageRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
+            var usageCount = FirebirdDb.CountResult(usageRows);
             if (usageCount > 0)
                 return $"Error: category '{category}' is used by {usageCount} item{(usageCount == 1 ? "" : "s")} " +
                        "(elements, connections, or part types). Reassign or delete them first. " +

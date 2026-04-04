@@ -1,5 +1,4 @@
 ﻿using System.ComponentModel;
-using System.Text.RegularExpressions;
 using ModelContextProtocol.Server;
 using HomeMemory.MCP.Db;
 
@@ -8,8 +7,6 @@ namespace HomeMemory.MCP.Tools;
 [McpServerToolType]
 public static class StatusTools
 {
-    // Same forbidden characters as element names (SpecialCharactersNotAllowed)
-    private static readonly Regex InvalidChars = new(@"[\$\*\[\{\]\}\|\\<>\?/"";\:\t]");
 
     private static string StatusTypeName(object? val) => Convert.ToInt32(val ?? 0) switch
     {
@@ -104,10 +101,10 @@ public static class StatusTools
         // Validate new_name
         if (new_name != null)
         {
-            new_name = new_name.Trim();
+            new_name = Validate.NormalizeSingleline(new_name)?.Trim();
             if (string.IsNullOrEmpty(new_name))
                 return "Error: 'new_name' cannot be empty.";
-            if (InvalidChars.IsMatch(new_name))
+            if (Validate.InvalidChars.IsMatch(new_name))
                 return "Error: new_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
         }
 
@@ -127,6 +124,8 @@ public static class StatusTools
         }
 
         bool clearNote = note?.Trim().Equals("CLEAR", StringComparison.OrdinalIgnoreCase) == true;
+
+        note = Validate.NormalizeSingleline(note);
 
         // Field length validation
         var lenErr = Validate.Length(new_name, "new_name", 100)
@@ -166,9 +165,7 @@ public static class StatusTools
                 var existRows = FirebirdDb.ExecuteQuery(conn,
                     """SELECT COUNT(*) AS CNT FROM "Status" WHERE UPPER("Name") = UPPER(?) AND "Oid" <> ?""",
                     effectiveName, oid);
-                var existCount = existRows.Count > 0
-                    ? Convert.ToInt64(existRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-                if (existCount > 0)
+                if (FirebirdDb.CountResult(existRows) > 0)
                     return $"Error: a status named '{effectiveName}' already exists.";
             }
 
@@ -224,12 +221,13 @@ public static class StatusTools
         [Description("Status type: 'existing' (present in the building), 'planned' (not yet built), 'removed' (decommissioned)")] string status_type,
         [Description("Short note describing when to use this status (optional)")] string? note = null)
     {
-        name        = name?.Trim()        ?? "";
+        name        = Validate.NormalizeSingleline(name)?.Trim() ?? "";
         status_type = status_type?.Trim() ?? "";
+        note        = Validate.NormalizeSingleline(note);
 
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required.";
-        if (InvalidChars.IsMatch(name))
+        if (Validate.InvalidChars.IsMatch(name))
             return "Error: name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
         // Field length validation
         var lenErr = Validate.Length(name, "name", 100)
@@ -254,9 +252,7 @@ public static class StatusTools
             // Name must be globally unique
             var existRows = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "Status" WHERE UPPER("Name") = UPPER(?)""", name);
-            var existCount = existRows.Count > 0
-                ? Convert.ToInt64(existRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-            if (existCount > 0)
+            if (FirebirdDb.CountResult(existRows) > 0)
                 return $"Error: a status named '{name}' already exists.";
 
             var oid = Guid.NewGuid().ToString("D");
@@ -316,7 +312,7 @@ public static class StatusTools
             // Blocking check: CEntity references
             var usageRows  = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "CEntity" WHERE "Status" = ?""", oid);
-            var usageCount = usageRows.Count > 0 ? Convert.ToInt64(usageRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
+            var usageCount = FirebirdDb.CountResult(usageRows);
             if (usageCount > 0)
                 return $"Error: status '{name}' is assigned to {usageCount} element{(usageCount == 1 ? "" : "s")}. " +
                        $"Reassign or remove their status first (call find_element with status='{name}' to locate them).";

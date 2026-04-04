@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 
 namespace HomeMemory.MCP.Tools;
 
@@ -8,6 +9,13 @@ namespace HomeMemory.MCP.Tools;
 /// </summary>
 internal static class Validate
 {
+    // Forbidden characters for element/category/status names (SpecialCharactersNotAllowed)
+    // $*[{}|\<>?/";\: and tab
+    internal static readonly Regex InvalidChars = new(@"[\$\*\[\{\]\}\|\\<>\?/"";\:\t]");
+
+    // Forbidden characters for connection names (subset – connections allow more characters)
+    internal static readonly Regex InvalidCharsConnection = new(@"[\*\|<>?""\t]");
+
     /// <summary>
     /// Returns an error message if <paramref name="value"/> exceeds <paramref name="maxLen"/> characters, otherwise null.
     /// </summary>
@@ -24,6 +32,21 @@ internal static class Validate
     /// </summary>
     public static string? NormalizeClear(string? value) =>
         "CLEAR".Equals(value?.Trim(), StringComparison.OrdinalIgnoreCase) ? "CLEAR" : value;
+
+    /// <summary>
+    /// Normalizes newlines in multiline fields (Description, UserManual, Route) to \r\n
+    /// for Smartconstruct compatibility. Unifies standalone \r and \n, then converts to \r\n.
+    /// </summary>
+    public static string? NormalizeMultiline(string? value) =>
+        value is null ? null : value.Replace("\r\n", "\n").Replace("\r", "\n").Replace("\n", "\r\n");
+
+    /// <summary>
+    /// Normalizes newlines in single-line fields (Name, ShortName, Position, Purpose, Note)
+    /// to a space. MCP clients may send \n in text input; Smartconstruct does not support
+    /// line breaks in these fields.
+    /// </summary>
+    public static string? NormalizeSingleline(string? value) =>
+        value is null ? null : value.Replace("\r\n", " ").Replace("\r", " ").Replace("\n", " ");
 }
 
 /// <summary>

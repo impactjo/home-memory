@@ -138,6 +138,13 @@ public static class FirebirdDb
         return cmd.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Extracts the COUNT value from a <c>SELECT COUNT(*) AS CNT</c> result row list.
+    /// Returns 0 when the list is empty.
+    /// </summary>
+    public static long CountResult(List<Row> rows) =>
+        Convert.ToInt64(rows.FirstOrDefault()?.GetValueOrDefault("CNT") ?? 0L);
+
     /// <summary>Null-safe string trimmer.</summary>
     public static string Str(object? val) => val switch
     {

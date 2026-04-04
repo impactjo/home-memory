@@ -36,6 +36,17 @@ internal static class QueryHelpers
     internal static string NormalizePath(string path)
         => path.Trim().TrimEnd('/');
 
+    /// <summary>
+    /// Splits a full element path into (parent, name).
+    /// The parent segment includes the trailing slash, e.g. "House/GF/" and "Kitchen".
+    /// Returns ("", fullname) for top-level elements.
+    /// </summary>
+    internal static (string parent, string name) SplitParentAndName(string fullname)
+    {
+        int i = fullname.LastIndexOf('/');
+        return i >= 0 ? (fullname[..(i + 1)], fullname[(i + 1)..]) : ("", fullname);
+    }
+
     internal static bool TryResolveElementRow(
         Dictionary<string, Row> byFullName,
         string path,
@@ -214,8 +225,7 @@ internal static class QueryHelpers
                 : new List<object?> { name };
         }
         var nameRows  = FirebirdDb.ExecuteQuery(conn, nameSql, nameArgs.ToArray());
-        var nameCount = nameRows.Count > 0 ? Convert.ToInt64(nameRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-        if (nameCount > 0)
+        if (FirebirdDb.CountResult(nameRows) > 0)
             return $"Error: a sibling element with name '{name}' already exists under the same parent.";
 
         // -- ShortName + PartOfElement must be unique (SkipNullOrEmptyValues = true) --
@@ -237,9 +247,8 @@ internal static class QueryHelpers
                     ? new List<object?> { shortName, excludeOid }
                     : new List<object?> { shortName };
             }
-            var snRows  = FirebirdDb.ExecuteQuery(conn, snSql, snArgs.ToArray());
-            var snCount = snRows.Count > 0 ? Convert.ToInt64(snRows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-            if (snCount > 0)
+            var snRows = FirebirdDb.ExecuteQuery(conn, snSql, snArgs.ToArray());
+            if (FirebirdDb.CountResult(snRows) > 0)
                 return $"Error: a sibling element with short name '{shortName}' already exists under the same parent.";
         }
         return null;
@@ -253,9 +262,9 @@ internal static class QueryHelpers
     {
         try
         {
-            var rows  = FirebirdDb.ExecuteQuery(conn,
+            var rows = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "Document" WHERE "ConstructionEntity" = ?""", oid);
-            var count = rows.Count > 0 ? Convert.ToInt64(rows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
+            var count = FirebirdDb.CountResult(rows);
             return count > 0
                 ? $"Error: element has {count} attached document(s). Remove them first."
                 : null;
@@ -296,7 +305,7 @@ internal static class QueryHelpers
         {
             var rows = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "ImagesToCItems" WHERE "CItem" = ?""", oid);
-            var count = rows.Count > 0 ? Convert.ToInt64(rows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
+            var count = FirebirdDb.CountResult(rows);
             if (count > 0)
                 advisories.Add($"{count} image association(s) removed");
         }
@@ -371,8 +380,7 @@ internal static class QueryHelpers
               AND c."Destination" = ?{excludeClause}
             """, args.ToArray());
 
-        var count = rows.Count > 0 ? Convert.ToInt64(rows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
-        return count > 0
+        return FirebirdDb.CountResult(rows) > 0
             ? "Error: a connection with the same name, category, source, and destination already exists."
             : null;
     }
@@ -398,7 +406,7 @@ internal static class QueryHelpers
                   AND c."Destination" = ?
                   AND ci."Category"   = ?{excludeClause}
                 """, args.ToArray());
-            var count = rows.Count > 0 ? Convert.ToInt64(rows[0].GetValueOrDefault("CNT") ?? 0L) : 0L;
+            var count = FirebirdDb.CountResult(rows);
             return count > 0
                 ? $"\n  Note: {count} other connection(s) with the same source, destination, and category already exist."
                 : "";

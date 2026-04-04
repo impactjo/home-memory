@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Text;
-using System.Text.RegularExpressions;
 using ModelContextProtocol.Server;
 using HomeMemory.MCP.Db;
 
@@ -9,7 +8,6 @@ namespace HomeMemory.MCP.Tools;
 [McpServerToolType]
 public static class ConnectionTools
 {
-    private static readonly Regex InvalidCharsConnection = new(@"[\*\|<>?""\t]");
 
     [McpServerTool(Name = "get_connections")]
     [Description(
@@ -126,9 +124,7 @@ public static class ConnectionTools
             {
                 if (srcFn != currentSrc)
                 {
-                    int last      = srcFn.LastIndexOf('/');
-                    var srcParent = last >= 0 ? srcFn[..(last + 1)] : "";
-                    var srcName   = last >= 0 ? srcFn[(last + 1)..] : srcFn;
+                    var (srcParent, srcName) = QueryHelpers.SplitParentAndName(srcFn);
                     lines.Add($"\n  {srcParent}{srcName}:");
                     currentSrc = srcFn;
                 }
@@ -292,7 +288,7 @@ public static class ConnectionTools
         [Description("Temporary note or to-do during planning/construction – not for permanent records (optional). Only fill with information the user explicitly provided.")] string? note = null,
         [Description("Permanent technical information: material, specifications, installation details (optional). Only fill with information the user explicitly provided — do not generate or infer.")] string? description = null)
     {
-        name        = name?.Trim()        ?? "";
+        name        = Validate.NormalizeSingleline(name)?.Trim() ?? "";
         category    = category?.Trim()    ?? "";
         source      = string.IsNullOrWhiteSpace(source) ? "" : QueryHelpers.NormalizePath(source);
         destination = string.IsNullOrWhiteSpace(destination) ? "" : QueryHelpers.NormalizePath(destination);
@@ -301,8 +297,13 @@ public static class ConnectionTools
         if (string.IsNullOrEmpty(category))    return "Error: 'category' is required.";
         if (string.IsNullOrEmpty(source))      return "Error: 'source' is required.";
         if (string.IsNullOrEmpty(destination)) return "Error: 'destination' is required.";
-        if (InvalidCharsConnection.IsMatch(name))
+        if (Validate.InvalidCharsConnection.IsMatch(name))
             return "Error: name contains invalid characters (*|<>?\" or tab).";
+
+        route       = Validate.NormalizeMultiline(route);
+        purpose     = Validate.NormalizeSingleline(purpose);
+        note        = Validate.NormalizeSingleline(note);
+        description = Validate.NormalizeMultiline(description);
 
         var lenErr = Validate.Length(name, "name", 150)
                   ?? Validate.Length(route?.Trim(), "route", 1000)
@@ -417,12 +418,17 @@ public static class ConnectionTools
         note        = Validate.NormalizeClear(note);
         description = Validate.NormalizeClear(description);
 
+        route       = Validate.NormalizeMultiline(route);
+        purpose     = Validate.NormalizeSingleline(purpose);
+        note        = Validate.NormalizeSingleline(note);
+        description = Validate.NormalizeMultiline(description);
+
         if (new_name != null)
         {
-            new_name = new_name.Trim();
+            new_name = Validate.NormalizeSingleline(new_name)?.Trim();
             if (string.IsNullOrEmpty(new_name))
                 return "Error: 'new_name' cannot be empty.";
-            if (InvalidCharsConnection.IsMatch(new_name))
+            if (Validate.InvalidCharsConnection.IsMatch(new_name))
                 return "Error: new_name contains invalid characters (*|<>?\" or tab).";
         }
 
