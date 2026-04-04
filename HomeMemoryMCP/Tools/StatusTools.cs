@@ -57,8 +57,8 @@ public static class StatusTools
                     currentType = sType;
                 }
 
-                var name      = FirebirdDb.Str(row["Name"]);
-                var note      = FirebirdDb.Str(row.GetValueOrDefault("Note"));
+                var name      = row.Str("Name");
+                var note      = row.Str("Note");
                 var elemCount = Convert.ToInt64(row.GetValueOrDefault("ELEM_COUNT") ?? 0L);
 
                 var detail = elemCount > 0 ? $"  ({elemCount} elem.)" : "";
@@ -144,9 +144,9 @@ public static class StatusTools
                 return $"Error: status '{name}' not found. Call list_statuses to see available statuses.";
 
             var row         = findRows[0];
-            var oid         = FirebirdDb.Str(row["Oid"]);
+            var oid         = row.Str("Oid");
             var currentST   = Convert.ToInt32(row.GetValueOrDefault("StatusType") ?? 0);
-            var currentNote = FirebirdDb.Str(row.GetValueOrDefault("Note"));
+            var currentNote = row.Str("Note");
 
             // Effective values
             var effectiveName = new_name ?? name;
@@ -307,7 +307,7 @@ public static class StatusTools
             if (findRows.Count == 0)
                 return $"Error: status '{name}' not found. Call list_statuses to see available statuses.";
 
-            var oid = FirebirdDb.Str(findRows[0]["Oid"]);
+            var oid = findRows[0].Str("Oid");
 
             // Blocking check: CEntity references
             var usageRows  = FirebirdDb.ExecuteQuery(conn,

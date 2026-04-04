@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Text;
 using ModelContextProtocol.Server;
 using HomeMemory.MCP.Db;
@@ -45,7 +45,7 @@ public static class ConnectionTools
                 $"{SqlQueries.EtreeCte} SELECT \"Oid\", FULLNAME FROM ETREE");
             var oidToFn = allElements.ToDictionary(
                 r => FirebirdDb.OidKey(r["Oid"]),
-                r => FirebirdDb.Str(r["FULLNAME"]),
+                r => r.Str("FULLNAME"),
                 StringComparer.OrdinalIgnoreCase);
 
             HashSet<string>? catOids = null;
@@ -99,8 +99,8 @@ public static class ConnectionTools
             }
 
             results.Sort((a, b) => string.Compare(
-                a.srcFn + FirebirdDb.Str(a.row.GetValueOrDefault("Name")),
-                b.srcFn + FirebirdDb.Str(b.row.GetValueOrDefault("Name")),
+                a.srcFn + a.row.Str("Name"),
+                b.srcFn + b.row.Str("Name"),
                 StringComparison.OrdinalIgnoreCase));
 
             var totalCount = results.Count;
@@ -129,10 +129,10 @@ public static class ConnectionTools
                     currentSrc = srcFn;
                 }
 
-                var dst    = !string.IsNullOrEmpty(dstFn) ? dstFn : FirebirdDb.Str(r.GetValueOrDefault("Destination"));
-                var name   = FirebirdDb.Str(r.GetValueOrDefault("Name"));
+                var dst    = !string.IsNullOrEmpty(dstFn) ? dstFn : r.Str("Destination");
+                var name   = r.Str("Name");
                 var length = r.GetValueOrDefault("Length");
-                var route  = FirebirdDb.Str(r.GetValueOrDefault("Route"));
+                var route  = r.Str("Route");
                 var detail = (length is not null and not DBNull) ? $"  ({length} m)" : "";
                 lines.Add($"    --> {dst}  [{name}]{detail}");
                 if (!string.IsNullOrEmpty(route))
@@ -175,7 +175,7 @@ public static class ConnectionTools
             var (allElements, _, byFullName) = QueryHelpers.LoadEtree(conn);
             var oidToFn = allElements.ToDictionary(
                 r => FirebirdDb.OidKey(r["Oid"]),
-                r => FirebirdDb.Str(r["FULLNAME"]),
+                r => r.Str("FULLNAME"),
                 StringComparer.OrdinalIgnoreCase);
 
             string? srcOid = null, dstOid = null;
@@ -183,13 +183,13 @@ public static class ConnectionTools
             {
                 if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out _))
                     return $"Error: source element '{source}' not found.";
-                srcOid = FirebirdDb.Str(srcRow["Oid"]);
+                srcOid = srcRow.Str("Oid");
             }
             if (destination != null)
             {
                 if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out _))
                     return $"Error: destination element '{destination}' not found.";
-                dstOid = FirebirdDb.Str(dstRow["Oid"]);
+                dstOid = dstRow.Str("Oid");
             }
 
             var findSql  = """SELECT c."Oid" FROM "Connection" c WHERE UPPER(c."Name") = ?""";
@@ -205,7 +205,7 @@ public static class ConnectionTools
                 return $"Error: {matches.Count} connections named '{name}' found. " +
                        "Provide source and/or destination to narrow the search.";
 
-            var oid = FirebirdDb.Str(matches[0]["Oid"]);
+            var oid = matches[0].Str("Oid");
 
             var detail = FirebirdDb.ExecuteQuery(conn, """
                 SELECT c."Name", c."Source", c."Destination", c."Route", c."Length",
@@ -229,24 +229,24 @@ public static class ConnectionTools
             var dstFn  = oidToFn.GetValueOrDefault(FirebirdDb.OidKey(d.GetValueOrDefault("Destination")), "");
             var length = d.GetValueOrDefault("Length");
 
-            var lines = new List<string> { $"Connection: {FirebirdDb.Str(d["Name"])}\n" };
-            lines.Add($"  Category    : {FirebirdDb.Str(d["CategoryName"])}");
-            var partType = FirebirdDb.Str(d.GetValueOrDefault("PartTypeName"));
+            var lines = new List<string> { $"Connection: {d.Str("Name")}\n" };
+            lines.Add($"  Category    : {d.Str("CategoryName")}");
+            var partType = d.Str("PartTypeName");
             if (!string.IsNullOrEmpty(partType)) lines.Add($"  Part type   : {partType}");
             lines.Add($"  Source      : {srcFn}");
             lines.Add($"  Destination : {dstFn}");
             if (length is not null and not DBNull) lines.Add($"  Length      : {length} m");
 
-            var route = FirebirdDb.Str(d.GetValueOrDefault("Route"));
+            var route = d.Str("Route");
             if (!string.IsNullOrEmpty(route))       lines.Add($"  Route       : {route}");
 
-            var purpose = FirebirdDb.Str(d.GetValueOrDefault("Purpose"));
+            var purpose = d.Str("Purpose");
             if (!string.IsNullOrEmpty(purpose))     lines.Add($"  Purpose     : {purpose}");
 
-            var note = FirebirdDb.Str(d.GetValueOrDefault("Note"));
+            var note = d.Str("Note");
             if (!string.IsNullOrEmpty(note))        lines.Add($"  Note        : {note}");
 
-            var desc = FirebirdDb.Str(d.GetValueOrDefault("Description"));
+            var desc = d.Str("Description");
             if (!string.IsNullOrEmpty(desc))        lines.Add($"  Description : {desc}");
 
             return string.Join("\n", lines);
@@ -322,8 +322,8 @@ public static class ConnectionTools
             if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out var destinationFullName))
                 return $"Error: destination element '{destination}' not found.";
 
-            var srcOid = FirebirdDb.Str(srcRow["Oid"]);
-            var dstOid = FirebirdDb.Str(dstRow["Oid"]);
+            var srcOid = srcRow.Str("Oid");
+            var dstOid = dstRow.Str("Oid");
 
             var (categoryOid, catError) = QueryHelpers.ResolveCategoryOid(conn, category);
             if (catError != null) return catError;
@@ -338,8 +338,7 @@ public static class ConnectionTools
             var oid = Guid.NewGuid().ToString("D");
             var now = DateTime.UtcNow;
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     INSERT INTO "CEntity" ("Oid", "OptimisticLockField", "ObjectType", "CreatedOn", "CreatedBy",
@@ -366,14 +365,8 @@ public static class ConnectionTools
                     (object?)route?.Trim() ?? DBNull.Value,
                     (object?)length        ?? DBNull.Value);
 
-                txn.Commit();
                 return $"✓ Connection '{name}' created: {source} → {destination} (OID: {oid}).{hint}";
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -451,13 +444,13 @@ public static class ConnectionTools
                 {
                     if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out _))
                         return $"Error: source element '{source}' not found.";
-                    srcOid = FirebirdDb.Str(srcRow["Oid"]);
+                    srcOid = srcRow.Str("Oid");
                 }
                 if (destination != null)
                 {
                     if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out _))
                         return $"Error: destination element '{destination}' not found.";
-                    dstOid = FirebirdDb.Str(dstRow["Oid"]);
+                    dstOid = dstRow.Str("Oid");
                 }
             }
 
@@ -474,7 +467,7 @@ public static class ConnectionTools
                 return $"Error: {matches.Count} connections named '{name}' found. " +
                        "Provide source and/or destination to narrow the search.";
 
-            var oid = FirebirdDb.Str(matches[0]["Oid"]);
+            var oid = matches[0].Str("Oid");
             var now = DateTime.UtcNow;
 
             string? categoryOid = null;
@@ -499,13 +492,13 @@ public static class ConnectionTools
                 {
                     if (!QueryHelpers.TryResolveElementRow(byFullName2, new_source, out var row, out _))
                         return $"Error: new source element '{new_source}' not found.";
-                    newSrcOid = FirebirdDb.Str(row["Oid"]);
+                    newSrcOid = row.Str("Oid");
                 }
                 if (new_destination != null)
                 {
                     if (!QueryHelpers.TryResolveElementRow(byFullName2, new_destination, out var row, out _))
                         return $"Error: new destination element '{new_destination}' not found.";
-                    newDstOid = FirebirdDb.Str(row["Oid"]);
+                    newDstOid = row.Str("Oid");
                 }
             }
 
@@ -521,10 +514,10 @@ public static class ConnectionTools
                 if (curConnRows.Count > 0)
                 {
                     var cur       = curConnRows[0];
-                    var checkName = new_name    ?? FirebirdDb.Str(cur["Name"]);
-                    var checkCat  = categoryOid ?? FirebirdDb.Str(cur.GetValueOrDefault("Category"));
-                    var checkSrc  = newSrcOid   ?? FirebirdDb.Str(cur.GetValueOrDefault("Source"));
-                    var checkDst  = newDstOid   ?? FirebirdDb.Str(cur.GetValueOrDefault("Destination"));
+                    var checkName = new_name    ?? cur.Str("Name");
+                    var checkCat  = categoryOid ?? cur.Str("Category");
+                    var checkSrc  = newSrcOid   ?? cur.Str("Source");
+                    var checkDst  = newDstOid   ?? cur.Str("Destination");
                     var combError = QueryHelpers.CheckConnectionCombinationUniqueness(conn, checkName, checkCat, checkSrc, checkDst, oid);
                     if (combError != null) return combError;
                 }
@@ -549,8 +542,7 @@ public static class ConnectionTools
             var overwriteAdvisories = QueryHelpers.CollectOverwriteAdvisories(
                 conn, oid, description, note, purpose);
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     UPDATE "CEntity" SET
@@ -605,18 +597,12 @@ public static class ConnectionTools
                         """UPDATE "CEntity" SET "Description" = ? WHERE "Oid" = ?""",
                         description == "CLEAR" ? DBNull.Value : (object)description.Trim(), oid);
 
-                txn.Commit();
                 var displayName = new_name ?? name;
                 var result = $"✓ Connection '{displayName}' updated.";
                 foreach (var adv in overwriteAdvisories)
                     result += $"\n  Advisory: {adv}.";
                 return result;
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -654,13 +640,13 @@ public static class ConnectionTools
                 {
                     if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out _))
                         return $"Error: source element '{source}' not found.";
-                    srcOid = FirebirdDb.Str(srcRow["Oid"]);
+                    srcOid = srcRow.Str("Oid");
                 }
                 if (destination != null)
                 {
                     if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out _))
                         return $"Error: destination element '{destination}' not found.";
-                    dstOid = FirebirdDb.Str(dstRow["Oid"]);
+                    dstOid = dstRow.Str("Oid");
                 }
             }
 
@@ -677,13 +663,12 @@ public static class ConnectionTools
                 return $"Error: {matches.Count} connections named '{name}' found. " +
                        "Provide source and/or destination to narrow the search.";
 
-            var oid = FirebirdDb.Str(matches[0]["Oid"]);
+            var oid = matches[0].Str("Oid");
 
             var docError = QueryHelpers.CheckDocumentsAttached(conn, oid);
             if (docError != null) return docError.Replace("element", "connection");
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Connection"     WHERE "Oid"   = ?""", oid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Part"           WHERE "Oid"   = ?""", oid);
@@ -693,14 +678,8 @@ public static class ConnectionTools
                 catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569) { /* table absent – skip */ }
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", oid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", oid);
-                txn.Commit();
                 return $"✓ Connection '{name}' deleted.";
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {

@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using ModelContextProtocol.Server;
 using HomeMemory.MCP.Db;
 
@@ -43,19 +43,19 @@ public static class ElementTools
                 StringComparer.OrdinalIgnoreCase);
 
             var target = allElements.FirstOrDefault(r =>
-                string.Equals(FirebirdDb.Str(r["FULLNAME"]), fn, StringComparison.OrdinalIgnoreCase));
+                string.Equals(r.Str("FULLNAME"), fn, StringComparison.OrdinalIgnoreCase));
 
             if (target is null)
                 return $"Error: element '{fn}' not found. Use find_element to search for the correct path.";
 
             var oid    = target["Oid"];
             var oidKey = FirebirdDb.OidKey(oid);
-            var lines  = new List<string> { $"Element: {FirebirdDb.Str(target["FULLNAME"])}\n" };
+            var lines  = new List<string> { $"Element: {target.Str("FULLNAME")}\n" };
 
-            lines.Add($"  Name        : {FirebirdDb.Str(target["Name"])}");
-            var sn = FirebirdDb.Str(target.GetValueOrDefault("ShortName"));
+            lines.Add($"  Name        : {target.Str("Name")}");
+            var sn = target.Str("ShortName");
             if (!string.IsNullOrEmpty(sn)) lines.Add($"  Short name  : {sn}");
-            var pos = FirebirdDb.Str(target.GetValueOrDefault("Position"));
+            var pos = target.Str("Position");
             if (!string.IsNullOrEmpty(pos)) lines.Add($"  Position    : {pos}");
 
             var ext = FirebirdDb.ExecuteQuery(conn, """
@@ -79,20 +79,20 @@ public static class ElementTools
             if (ext.Count > 0)
             {
                 var e = ext[0];
-                if (!string.IsNullOrEmpty(FirebirdDb.Str(e.GetValueOrDefault("CategoryName"))))
-                    lines.Add($"  Category    : {FirebirdDb.Str(e["CategoryName"])}");
-                if (!string.IsNullOrEmpty(FirebirdDb.Str(e.GetValueOrDefault("StatusName"))))
-                    lines.Add($"  Status      : {FirebirdDb.Str(e["StatusName"])}");
-                if (!string.IsNullOrEmpty(FirebirdDb.Str(e.GetValueOrDefault("PartTypeName"))))
-                    lines.Add($"  Part type   : {FirebirdDb.Str(e["PartTypeName"])}");
-                if (!string.IsNullOrEmpty(FirebirdDb.Str(e.GetValueOrDefault("Purpose"))))
-                    lines.Add($"  Purpose     : {FirebirdDb.Str(e["Purpose"])}");
-                if (!string.IsNullOrEmpty(FirebirdDb.Str(e.GetValueOrDefault("Note"))))
-                    lines.Add($"  Note        : {FirebirdDb.Str(e["Note"])}");
-                if (!string.IsNullOrEmpty(FirebirdDb.Str(e.GetValueOrDefault("Description"))))
-                    lines.Add($"  Description : {FirebirdDb.Str(e["Description"])}");
-                if (!string.IsNullOrEmpty(FirebirdDb.Str(e.GetValueOrDefault("UserManual"))))
-                    lines.Add($"  User manual : {FirebirdDb.Str(e["UserManual"])}");
+                if (!string.IsNullOrEmpty(e.Str("CategoryName")))
+                    lines.Add($"  Category    : {e.Str("CategoryName")}");
+                if (!string.IsNullOrEmpty(e.Str("StatusName")))
+                    lines.Add($"  Status      : {e.Str("StatusName")}");
+                if (!string.IsNullOrEmpty(e.Str("PartTypeName")))
+                    lines.Add($"  Part type   : {e.Str("PartTypeName")}");
+                if (!string.IsNullOrEmpty(e.Str("Purpose")))
+                    lines.Add($"  Purpose     : {e.Str("Purpose")}");
+                if (!string.IsNullOrEmpty(e.Str("Note")))
+                    lines.Add($"  Note        : {e.Str("Note")}");
+                if (!string.IsNullOrEmpty(e.Str("Description")))
+                    lines.Add($"  Description : {e.Str("Description")}");
+                if (!string.IsNullOrEmpty(e.Str("UserManual")))
+                    lines.Add($"  User manual : {e.Str("UserManual")}");
             }
 
             var children = FirebirdDb.ExecuteQuery(conn, """
@@ -104,7 +104,7 @@ public static class ElementTools
 
             var fnPrefix = fn.TrimEnd('/') + "/";
             int totalDescendants = allElements.Count(r =>
-                FirebirdDb.Str(r["FULLNAME"]).StartsWith(fnPrefix, StringComparison.OrdinalIgnoreCase));
+                r.Str("FULLNAME").StartsWith(fnPrefix, StringComparison.OrdinalIgnoreCase));
 
             if (children.Count > 0)
             {
@@ -113,8 +113,8 @@ public static class ElementTools
                 foreach (var c in children)
                 {
                     var childFull = oidToRow.TryGetValue(FirebirdDb.OidKey(c["Oid"]), out var cr)
-                        ? FirebirdDb.Str(cr["FULLNAME"])
-                        : FirebirdDb.Str(c["Name"]);
+                        ? cr.Str("FULLNAME")
+                        : c.Str("Name");
                     lines.Add($"    +-- {childFull}");
                 }
             }
@@ -132,11 +132,11 @@ public static class ElementTools
                 foreach (var c in connOut)
                 {
                     var destFull = oidToRow.TryGetValue(FirebirdDb.OidKey(c.GetValueOrDefault("Destination")), out var dr)
-                        ? FirebirdDb.Str(dr["FULLNAME"])
-                        : FirebirdDb.Str(c.GetValueOrDefault("Destination"));
+                        ? dr.Str("FULLNAME")
+                        : c.Str("Destination");
                     var length = c.GetValueOrDefault("Length");
-                    var route  = FirebirdDb.Str(c.GetValueOrDefault("Route"));
-                    var line   = $"    --> {FirebirdDb.Str(c["Name"])}  =>  {destFull}";
+                    var route  = c.Str("Route");
+                    var line   = $"    --> {c.Str("Name")}  =>  {destFull}";
                     if (length is not null and not DBNull) line += $"  ({length} m)";
                     lines.Add(line);
                     if (!string.IsNullOrEmpty(route)) lines.Add($"      Route: {route}");
@@ -156,11 +156,11 @@ public static class ElementTools
                 foreach (var c in connIn)
                 {
                     var srcFull = oidToRow.TryGetValue(FirebirdDb.OidKey(c.GetValueOrDefault("Source")), out var sr)
-                        ? FirebirdDb.Str(sr["FULLNAME"])
-                        : FirebirdDb.Str(c.GetValueOrDefault("Source"));
+                        ? sr.Str("FULLNAME")
+                        : c.Str("Source");
                     var length = c.GetValueOrDefault("Length");
-                    var route  = FirebirdDb.Str(c.GetValueOrDefault("Route"));
-                    var line   = $"    <-- {srcFull}  <=  {FirebirdDb.Str(c["Name"])}";
+                    var route  = c.Str("Route");
+                    var line   = $"    <-- {srcFull}  <=  {c.Str("Name")}";
                     if (length is not null and not DBNull) line += $"  ({length} m)";
                     lines.Add(line);
                     if (!string.IsNullOrEmpty(route)) lines.Add($"      Route: {route}");
@@ -244,7 +244,7 @@ public static class ElementTools
             {
                 if (!QueryHelpers.TryResolveElementRow(byFullName, parent, out var parentRow, out var canonicalParent))
                     return $"Error: parent element '{parent}' not found.";
-                parentOid      = FirebirdDb.Str(parentRow["Oid"]);
+                parentOid      = parentRow.Str("Oid");
                 parentFullName = canonicalParent;
             }
 
@@ -276,8 +276,7 @@ public static class ElementTools
             var oid = Guid.NewGuid().ToString("D");
             var now = DateTime.UtcNow;
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     INSERT INTO "CEntity" ("Oid", "OptimisticLockField", "ObjectType", "CreatedOn", "CreatedBy",
@@ -309,14 +308,8 @@ public static class ElementTools
                     (object?)position?.Trim()    ?? DBNull.Value,
                     sortIndex);
 
-                txn.Commit();
                 return $"✓ Element '{newFullName}' created (OID: {oid}).";
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -375,7 +368,7 @@ public static class ElementTools
                 return $"Error: element '{fullname}' not found.";
             fullname = canonicalFullname;
 
-            var oid = FirebirdDb.Str(targetRow["Oid"]);
+            var oid = targetRow.Str("Oid");
             var now = DateTime.UtcNow;
 
             if (name != null)
@@ -411,10 +404,10 @@ public static class ElementTools
                 if (curRows.Count == 0) return "Error: element not found in Element table.";
                 var cur = curRows[0];
 
-                var newName      = name      ?? FirebirdDb.Str(cur["Name"]);
+                var newName      = name      ?? cur.Str("Name");
                 var newShortName = short_name == "CLEAR" ? null
                                  : short_name != null    ? short_name
-                                 : (string?)FirebirdDb.Str(cur.GetValueOrDefault("ShortName")).NullIfEmpty();
+                                 : (string?)cur.Str("ShortName").NullIfEmpty();
                 var segment      = string.IsNullOrEmpty(newShortName) ? newName : newShortName;
 
                 var (parentPrefix, _) = QueryHelpers.SplitParentAndName(fullname);
@@ -462,8 +455,7 @@ public static class ElementTools
             var overwriteAdvisories = QueryHelpers.CollectOverwriteAdvisories(
                 conn, oid, description, note, purpose, user_manual);
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     UPDATE "CEntity" SET
@@ -518,17 +510,11 @@ public static class ElementTools
                         """UPDATE "Element" SET "Position" = ? WHERE "Oid" = ?""",
                         position == "CLEAR" ? DBNull.Value : (object)position.Trim(), oid);
 
-                txn.Commit();
                 var result = $"✓ Element '{fullname}' updated.";
                 foreach (var adv in overwriteAdvisories)
                     result += $"\n  Advisory: {adv}.";
                 return result;
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -560,7 +546,7 @@ public static class ElementTools
                 return $"Error: element '{fullname}' not found.";
             fullname = canonicalFullname;
 
-            var oid = FirebirdDb.Str(targetRow["Oid"]);
+            var oid = targetRow.Str("Oid");
 
             var children   = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "Element" WHERE "PartOfElement" = ?""", oid);
@@ -580,8 +566,7 @@ public static class ElementTools
 
             var advisories = QueryHelpers.CollectDeleteAdvisories(conn, oid);
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Element"        WHERE "Oid"   = ?""", oid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Part"           WHERE "Oid"   = ?""", oid);
@@ -591,18 +576,12 @@ public static class ElementTools
                 catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569) { /* table absent – skip */ }
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", oid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", oid);
-                txn.Commit();
 
                 var result = $"✓ Element '{fullname}' deleted.";
                 if (advisories.Count > 0)
                     result += $"\n  Advisory: {string.Join("; ", advisories)}.";
                 return result;
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -639,7 +618,7 @@ public static class ElementTools
                 return $"Error: element '{fullname}' not found.";
             fullname = canonicalFullname;
 
-            var oid = FirebirdDb.Str(targetRow["Oid"]);
+            var oid = targetRow.Str("Oid");
 
             string? newParentOid      = null;
             string? newParentFullName = null;
@@ -649,7 +628,7 @@ public static class ElementTools
                     return $"Error: new parent element '{new_parent}' not found.";
                 new_parent = canonicalNewParent;
 
-                newParentOid      = FirebirdDb.Str(parentRow["Oid"]);
+                newParentOid      = parentRow.Str("Oid");
                 newParentFullName = canonicalNewParent;
 
                 var elementPrefix = fullname.TrimEnd('/') + "/";
@@ -670,8 +649,8 @@ public static class ElementTools
             var elemRows = FirebirdDb.ExecuteQuery(conn,
                 """SELECT "Name", "ShortName" FROM "Element" WHERE "Oid" = ?""", oid);
             if (elemRows.Count == 0) return "Error: element data not found.";
-            var elemName      = FirebirdDb.Str(elemRows[0]["Name"]);
-            var elemShortName = FirebirdDb.Str(elemRows[0].GetValueOrDefault("ShortName")).NullIfEmpty();
+            var elemName      = elemRows[0].Str("Name");
+            var elemShortName = elemRows[0].Str("ShortName").NullIfEmpty();
 
             var siblingError = QueryHelpers.CheckSiblingUniqueness(conn, elemName, elemShortName, newParentOid, oid);
             if (siblingError != null) return siblingError;
@@ -679,8 +658,7 @@ public static class ElementTools
             var sortIndex = QueryHelpers.NextSortIndex(conn, newParentOid);
             var now       = DateTime.UtcNow;
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     UPDATE "CEntity" SET
@@ -698,14 +676,8 @@ public static class ElementTools
                     sortIndex,
                     oid);
 
-                txn.Commit();
                 return $"✓ Element moved: '{fullname}' → '{newFullName}'.";
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {

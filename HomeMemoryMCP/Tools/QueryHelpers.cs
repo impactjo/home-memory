@@ -1,4 +1,4 @@
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using HomeMemory.MCP.Db;
 
 namespace HomeMemory.MCP.Tools;
@@ -19,14 +19,14 @@ internal static class QueryHelpers
             r => r,
             StringComparer.OrdinalIgnoreCase);
         var byFullName = all.ToDictionary(
-            r => FirebirdDb.Str(r["FULLNAME"]),
+            r => r.Str("FULLNAME"),
             r => r,
             StringComparer.OrdinalIgnoreCase);
         // Add long-name paths as fallback for when a model passes full name instead of short name
         // (e.g. 'House/Ground Floor' instead of 'House/GF'). Only adds where not already present.
         foreach (var row in all)
         {
-            var longName = FirebirdDb.Str(row["LONGNAME"]);
+            var longName = row.Str("LONGNAME");
             if (!byFullName.ContainsKey(longName))
                 byFullName[longName] = row;
         }
@@ -57,7 +57,7 @@ internal static class QueryHelpers
         canonicalFullName = "";
         if (string.IsNullOrWhiteSpace(path)) return false;
         if (!byFullName.TryGetValue(NormalizePath(path), out row)) return false;
-        canonicalFullName = FirebirdDb.Str(row["FULLNAME"]);
+        canonicalFullName = row.Str("FULLNAME");
         return true;
     }
 
@@ -75,7 +75,7 @@ internal static class QueryHelpers
             SELECT FIRST 1 FULLNAME FROM ETREE
             WHERE UPPER(FULLNAME) = UPPER(?) OR UPPER(LONGNAME) = UPPER(?)
             """, normalized, normalized);
-        return rows.Count > 0 ? FirebirdDb.Str(rows[0]["FULLNAME"]) : null;
+        return rows.Count > 0 ? rows[0].Str("FULLNAME") : null;
     }
 
     /// <summary>
@@ -98,7 +98,7 @@ internal static class QueryHelpers
                 {SqlQueries.CatCte}
                 SELECT "Oid" FROM CAT_TREE WHERE UPPER(CAT_FULLNAME) = ?
                 """, upper);
-            return pathRows.Count > 0 ? (FirebirdDb.Str(pathRows[0]["Oid"]), null) : (null, null);
+            return pathRows.Count > 0 ? (pathRows[0].Str("Oid"), null) : (null, null);
         }
 
         // No slash → resolve by Name or ShortName; use CTE to get full paths for ambiguity report
@@ -109,10 +109,10 @@ internal static class QueryHelpers
             """, upper, upper);
 
         if (rows.Count == 0) return (null, null);
-        if (rows.Count == 1) return (FirebirdDb.Str(rows[0]["Oid"]), null);
+        if (rows.Count == 1) return (rows[0].Str("Oid"), null);
 
         // Multiple matches — return an error listing all full paths
-        var paths = string.Join(", ", rows.Select(r => $"'{FirebirdDb.Str(r["CAT_FULLNAME"])}'"));
+        var paths = string.Join(", ", rows.Select(r => $"'{r.Str("CAT_FULLNAME")}'"));
         return (null, $"Error: category '{category.Trim()}' is ambiguous ({rows.Count} matches). " +
                       $"Use the full path instead: {paths}.");
     }
@@ -135,7 +135,7 @@ internal static class QueryHelpers
         if (category.Contains('/'))
         {
             matched = cats.Where(c =>
-                string.Equals(FirebirdDb.Str(c["CAT_FULLNAME"]), category, StringComparison.OrdinalIgnoreCase)
+                string.Equals(c.Str("CAT_FULLNAME"), category, StringComparison.OrdinalIgnoreCase)
             ).ToList();
         }
         else
@@ -145,15 +145,15 @@ internal static class QueryHelpers
             // child category named exactly "Heizung" exists.
             var upper = category.ToUpperInvariant();
             matched = cats.Where(c =>
-                string.Equals(FirebirdDb.Str(c["Name"]).ToUpperInvariant(), upper, StringComparison.Ordinal) ||
-                string.Equals(FirebirdDb.Str(c.GetValueOrDefault("ShortName")).ToUpperInvariant(), upper, StringComparison.Ordinal)
+                string.Equals(c.Str("Name").ToUpperInvariant(), upper, StringComparison.Ordinal) ||
+                string.Equals(c.Str("ShortName").ToUpperInvariant(), upper, StringComparison.Ordinal)
             ).ToList();
 
             if (matched.Count == 0)
             {
                 matched = cats.Where(c =>
-                    FirebirdDb.Str(c["Name"]).ToUpperInvariant().Contains(upper) ||
-                    FirebirdDb.Str(c.GetValueOrDefault("ShortName")).ToUpperInvariant().Contains(upper)
+                    c.Str("Name").ToUpperInvariant().Contains(upper) ||
+                    c.Str("ShortName").ToUpperInvariant().Contains(upper)
                 ).ToList();
             }
         }
@@ -163,11 +163,11 @@ internal static class QueryHelpers
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in matched)
         {
-            var mFn    = FirebirdDb.Str(m["CAT_FULLNAME"]);
+            var mFn    = m.Str("CAT_FULLNAME");
             var prefix = mFn + "/";
             foreach (var c in cats)
             {
-                var cFn = FirebirdDb.Str(c["CAT_FULLNAME"]);
+                var cFn = c.Str("CAT_FULLNAME");
                 if (string.Equals(cFn, mFn, StringComparison.OrdinalIgnoreCase) ||
                     cFn.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                     result.Add(FirebirdDb.OidKey(c["Oid"]));
@@ -181,7 +181,7 @@ internal static class QueryHelpers
         if (string.IsNullOrWhiteSpace(status)) return null;
         var rows = FirebirdDb.ExecuteQuery(conn,
             """SELECT "Oid" FROM "Status" WHERE UPPER("Name") = UPPER(?)""", status.Trim());
-        return rows.Count > 0 ? FirebirdDb.Str(rows[0]["Oid"]) : null;
+        return rows.Count > 0 ? rows[0].Str("Oid") : null;
     }
 
     internal static int NextSortIndex(FbConnection conn, string? parentOid)
@@ -291,8 +291,8 @@ internal static class QueryHelpers
                 """SELECT "Description", "UserManual" FROM "CEntity" WHERE "Oid" = ?""", oid);
             if (rows.Count > 0)
             {
-                var desc = FirebirdDb.Str(rows[0].GetValueOrDefault("Description"));
-                var um   = FirebirdDb.Str(rows[0].GetValueOrDefault("UserManual"));
+                var desc = rows[0].Str("Description");
+                var um   = rows[0].Str("UserManual");
                 if (!string.IsNullOrEmpty(desc) || !string.IsNullOrEmpty(um))
                     advisories.Add("element had a description and/or user manual (data is lost)");
             }
@@ -336,10 +336,10 @@ internal static class QueryHelpers
         if (rows.Count == 0) return advisories;
 
         var old = rows[0];
-        CheckOverwrite(advisories, "description",  FirebirdDb.Str(old.GetValueOrDefault("Description")), description);
-        CheckOverwrite(advisories, "note",          FirebirdDb.Str(old.GetValueOrDefault("Note")),        note);
-        CheckOverwrite(advisories, "purpose",       FirebirdDb.Str(old.GetValueOrDefault("Purpose")),     purpose);
-        CheckOverwrite(advisories, "user_manual",   FirebirdDb.Str(old.GetValueOrDefault("UserManual")),  userManual);
+        CheckOverwrite(advisories, "description",  old.Str("Description"), description);
+        CheckOverwrite(advisories, "note",          old.Str("Note"),        note);
+        CheckOverwrite(advisories, "purpose",       old.Str("Purpose"),     purpose);
+        CheckOverwrite(advisories, "user_manual",   old.Str("UserManual"),  userManual);
 
         return advisories;
     }

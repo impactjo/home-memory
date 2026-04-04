@@ -153,6 +153,29 @@ public static class FirebirdDb
         _         => val.ToString() ?? ""
     };
 
+    /// <summary>Null-safe string accessor for a Row (Dictionary&lt;string, object?&gt;).</summary>
+    public static string Str(this Row row, string key) =>
+        Str(row.GetValueOrDefault(key));
+
+    /// <summary>
+    /// Begins a transaction, invokes <paramref name="body"/>, commits on success, rolls back on failure.
+    /// </summary>
+    public static string RunInTransaction(FbConnection conn, Func<FbTransaction, string> body)
+    {
+        using var txn = conn.BeginTransaction();
+        try
+        {
+            var result = body(txn);
+            txn.Commit();
+            return result;
+        }
+        catch
+        {
+            txn.Rollback();
+            throw;
+        }
+    }
+
     /// <summary>Evaluates a Firebird boolean value (BOOLEAN, CHAR 'T'/'F', SMALLINT).</summary>
     public static bool IsTrue(object? val) => val switch
     {

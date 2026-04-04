@@ -109,15 +109,15 @@ public static class StructureTools
                 int relDepth = Convert.ToInt32(row["DEPTH"]) - depthOffset;
                 var indent = new string(' ', relDepth * 2);
                 var icon   = relDepth == 0 ? "[]" : (relDepth == 1 ? "+-" : " -");
-                var label  = FirebirdDb.Str(row["Name"]);
-                var sn     = FirebirdDb.Str(row.GetValueOrDefault("ShortName"));
+                var label  = row.Str("Name");
+                var sn     = row.Str("ShortName");
                 if (!string.IsNullOrEmpty(sn) && sn != label)
                     label += $" ({sn})";
-                if (structuralAreasOnly && FirebirdDb.Str(row.GetValueOrDefault("CATNAME")) == "E-Verteiler")
+                if (structuralAreasOnly && row.Str("CATNAME") == "E-Verteiler")
                     label += "  [E-Verteiler]";
                 var st = row.GetValueOrDefault("STATUSTYPE");
                 if (st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2)
-                    label += $"  {{{FirebirdDb.Str(row.GetValueOrDefault("STATUSNAME"))}}}";
+                    label += $"  {{{row.Str("STATUSNAME")}}}";
                 lines.Add($"{indent}{icon} {label}");
             }
 
@@ -279,7 +279,7 @@ public static class StructureTools
             string? currentParent = null;
             foreach (var row in rows)
             {
-                var fullname       = FirebirdDb.Str(row["FULLNAME"]);
+                var fullname       = row.Str("FULLNAME");
                 var (parent, name) = QueryHelpers.SplitParentAndName(fullname);
 
                 if (parent != currentParent)
@@ -289,8 +289,8 @@ public static class StructureTools
                 }
 
                 var indent     = !string.IsNullOrEmpty(parent) ? "    " : "  ";
-                var pos        = FirebirdDb.Str(row.GetValueOrDefault("Position"));
-                var statusName = FirebirdDb.Str(row.GetValueOrDefault("STATUSNAME"));
+                var pos        = row.Str("Position");
+                var statusName = row.Str("STATUSNAME");
                 var suffix     = "";
                 if (!string.IsNullOrEmpty(pos))        suffix += $"  [{pos}]";
                 if (!string.IsNullOrEmpty(statusName)) suffix += $"  {{{statusName}}}";
@@ -371,16 +371,16 @@ public static class StructureTools
             var lines = new List<string> { $"{title} ({rows.Count} items):\n" };
             foreach (var row in rows)
             {
-                var label = FirebirdDb.Str(row["Name"]);
-                var sn    = FirebirdDb.Str(row.GetValueOrDefault("ShortName"));
+                var label = row.Str("Name");
+                var sn    = row.Str("ShortName");
                 if (!string.IsNullOrEmpty(sn) && sn != label)
                     label += $" ({sn})";
                 var st = row.GetValueOrDefault("STATUSTYPE");
                 var statusSuffix = st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2
-                    ? $"  {{{FirebirdDb.Str(row.GetValueOrDefault("STATUSNAME"))}}}"
+                    ? $"  {{{row.Str("STATUSNAME")}}}"
                     : "";
-                lines.Add($"  - {FirebirdDb.Str(row["FULLNAME"])}  [{label}]{statusSuffix}");
-                var pos = FirebirdDb.Str(row.GetValueOrDefault("Position"));
+                lines.Add($"  - {row.Str("FULLNAME")}  [{label}]{statusSuffix}");
+                var pos = row.Str("Position");
                 if (!string.IsNullOrEmpty(pos))
                     lines.Add($"      Position: {pos}");
             }

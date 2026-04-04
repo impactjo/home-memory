@@ -58,8 +58,8 @@ public static class CategoryTools
                 int depth  = Convert.ToInt32(r.GetValueOrDefault("CAT_DEPTH") ?? 0);
                 var indent = new string(' ', depth * 2);
                 var icon   = depth > 0 ? "+-" : "-";
-                var name   = FirebirdDb.Str(r["Name"]);
-                var sn     = FirebirdDb.Str(r.GetValueOrDefault("ShortName"));
+                var name   = r.Str("Name");
+                var sn     = r.Str("ShortName");
                 var label  = !string.IsNullOrEmpty(sn) && sn != name ? $"{name} ({sn})" : name;
                 bool isStructuralArea = FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"));
                 long e = Convert.ToInt64(r.GetValueOrDefault("ELEM_COUNT") ?? 0L);
@@ -68,10 +68,10 @@ public static class CategoryTools
                 if (e > 0) parts.Add($"{e} elem.");
                 if (c > 0) parts.Add($"{c} conn.");
                 var countStr = parts.Count > 0 ? $"  ({string.Join(", ", parts)})" : "";
-                var descFlag = !string.IsNullOrEmpty(FirebirdDb.Str(r.GetValueOrDefault("Description"))) ? "  [i]" : "";
+                var descFlag = !string.IsNullOrEmpty(r.Str("Description")) ? "  [i]" : "";
                 var areaFlag = isStructuralArea ? "  [structural area]" : "";
                 // Show explicit path when ShortName changes the path segment (prevents copy-paste errors)
-                var catFullname = FirebirdDb.Str(r.GetValueOrDefault("CAT_FULLNAME"));
+                var catFullname = r.Str("CAT_FULLNAME");
                 var pathHint = !string.IsNullOrEmpty(sn) && sn != name
                     ? $"  [path: {catFullname}]"
                     : "";
@@ -116,7 +116,7 @@ public static class CategoryTools
             {
                 // Path notation: exact CAT_FULLNAME match (e.g. 'HKL/Heizung')
                 matched = allCats.Where(c =>
-                    string.Equals(FirebirdDb.Str(c["CAT_FULLNAME"]), category, StringComparison.OrdinalIgnoreCase)
+                    string.Equals(c.Str("CAT_FULLNAME"), category, StringComparison.OrdinalIgnoreCase)
                 ).ToList();
             }
             else
@@ -124,8 +124,8 @@ public static class CategoryTools
                 // Partial text match on Name or ShortName
                 var searchUpper = category.ToUpperInvariant();
                 matched = allCats.Where(c =>
-                    FirebirdDb.Str(c["Name"]).ToUpperInvariant().Contains(searchUpper) ||
-                    FirebirdDb.Str(c.GetValueOrDefault("ShortName")).ToUpperInvariant().Contains(searchUpper)
+                    c.Str("Name").ToUpperInvariant().Contains(searchUpper) ||
+                    c.Str("ShortName").ToUpperInvariant().Contains(searchUpper)
                 ).ToList();
             }
 
@@ -135,11 +135,11 @@ public static class CategoryTools
             var includedOids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var m in matched)
             {
-                var mFn    = FirebirdDb.Str(m["CAT_FULLNAME"]);
+                var mFn    = m.Str("CAT_FULLNAME");
                 var prefix = mFn + "/";
                 foreach (var c in allCats)
                 {
-                    var cFn = FirebirdDb.Str(c["CAT_FULLNAME"]);
+                    var cFn = c.Str("CAT_FULLNAME");
                     if (string.Equals(cFn, mFn, StringComparison.OrdinalIgnoreCase) ||
                         cFn.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                         includedOids.Add(FirebirdDb.OidKey(c["Oid"]));
@@ -180,14 +180,14 @@ public static class CategoryTools
             if (rows.Count == 0)
                 return $"No elements of category '{category}'{scope} found.\nTip: call list_categories for available categories.";
 
-            var catLabel = matched.Count == 1 ? FirebirdDb.Str(matched[0]["Name"]) : $"'{category}'";
+            var catLabel = matched.Count == 1 ? matched[0].Str("Name") : $"'{category}'";
             bool multiCat = includedOids.Count > 1;
             var lines = new List<string> { $"{catLabel} elements{scope} ({rows.Count}):\n" };
 
             string? currentParent = null;
             foreach (var row in rows)
             {
-                var fullname          = FirebirdDb.Str(row["FULLNAME"]);
+                var fullname          = row.Str("FULLNAME");
                 var (parent, name)    = QueryHelpers.SplitParentAndName(fullname);
 
                 if (parent != currentParent)
@@ -197,12 +197,12 @@ public static class CategoryTools
                 }
 
                 var indent  = !string.IsNullOrEmpty(parent) ? "    " : "  ";
-                var pos     = FirebirdDb.Str(row.GetValueOrDefault("Position"));
-                var catHint = multiCat ? $" [{FirebirdDb.Str(row.GetValueOrDefault("CATNAME"))}]" : "";
+                var pos     = row.Str("Position");
+                var catHint = multiCat ? $" [{row.Str("CATNAME")}]" : "";
                 var posHint = !string.IsNullOrEmpty(pos) ? $"  [{pos}]" : "";
                 var st      = row.GetValueOrDefault("STATUSTYPE");
                 var stHint  = st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2
-                    ? $"  {{{FirebirdDb.Str(row.GetValueOrDefault("STATUSNAME"))}}}"
+                    ? $"  {{{row.Str("STATUSNAME")}}}"
                     : "";
                 lines.Add($"{indent}{name}{catHint}{posHint}{stHint}");
             }
@@ -277,7 +277,7 @@ public static class CategoryTools
             using var conn  = FirebirdDb.OpenConnection();
             var allCats     = LoadCatTree(conn);
             var byFullName  = allCats.ToDictionary(
-                r => FirebirdDb.Str(r["CAT_FULLNAME"]),
+                r => r.Str("CAT_FULLNAME"),
                 r => r,
                 StringComparer.OrdinalIgnoreCase);
 
@@ -286,15 +286,15 @@ public static class CategoryTools
             if (!byFullName.TryGetValue(category, out var catRow))
                 return $"Error: category '{category}' not found. Call list_categories to see available categories.";
 
-            var oid         = FirebirdDb.Str(catRow["Oid"]);
-            var currentName = FirebirdDb.Str(catRow["Name"]);
-            var currentSN   = FirebirdDb.Str(catRow.GetValueOrDefault("ShortName"));
+            var oid         = catRow.Str("Oid");
+            var currentName = catRow.Str("Name");
+            var currentSN   = catRow.Str("ShortName");
 
             // Load current ParentCategory OID from DB
             var parentRows      = FirebirdDb.ExecuteQuery(conn,
                 """SELECT "ParentCategory" FROM "Category" WHERE "Oid" = ?""", oid);
             var currentParentStr = parentRows.Count > 0
-                ? FirebirdDb.Str(parentRows[0].GetValueOrDefault("ParentCategory"))
+                ? parentRows[0].Str("ParentCategory")
                 : null;
             var currentParentOid = string.IsNullOrEmpty(currentParentStr) ? null : currentParentStr;
 
@@ -322,13 +322,13 @@ public static class CategoryTools
                     return $"Error: new parent category '{new_parent}' not found. Call list_categories to see available categories.";
 
                 // Circular reference check: new parent must not be self or a descendant of self
-                var newParentFullName = FirebirdDb.Str(newParentRow["CAT_FULLNAME"]);
+                var newParentFullName = newParentRow.Str("CAT_FULLNAME");
                 if (string.Equals(newParentFullName, category, StringComparison.OrdinalIgnoreCase))
                     return "Error: a category cannot be its own parent.";
                 if (newParentFullName.StartsWith(category + "/", StringComparison.OrdinalIgnoreCase))
                     return "Error: circular reference – the new parent is a descendant of this category.";
 
-                effectiveParentOid = FirebirdDb.Str(newParentRow["Oid"]);
+                effectiveParentOid = newParentRow.Str("Oid");
             }
             else
             {
@@ -490,7 +490,7 @@ public static class CategoryTools
             // Load all categories to resolve parent and check uniqueness
             var allCats = LoadCatTree(conn);
             var byFullName = allCats.ToDictionary(
-                r => FirebirdDb.Str(r["CAT_FULLNAME"]),
+                r => r.Str("CAT_FULLNAME"),
                 r => r,
                 StringComparer.OrdinalIgnoreCase);
 
@@ -502,7 +502,7 @@ public static class CategoryTools
                 parent = QueryHelpers.NormalizePath(parent);
                 if (!byFullName.TryGetValue(parent, out var parentRow))
                     return $"Error: parent category '{parent}' not found. Call list_categories to see available categories.";
-                parentOid      = FirebirdDb.Str(parentRow["Oid"]);
+                parentOid      = parentRow.Str("Oid");
                 parentFullName = parent;
             }
 
@@ -601,7 +601,7 @@ public static class CategoryTools
             using var conn  = FirebirdDb.OpenConnection();
             var allCats     = LoadCatTree(conn);
             var byFullName  = allCats.ToDictionary(
-                r => FirebirdDb.Str(r["CAT_FULLNAME"]),
+                r => r.Str("CAT_FULLNAME"),
                 r => r,
                 StringComparer.OrdinalIgnoreCase);
 
@@ -609,7 +609,7 @@ public static class CategoryTools
             if (!byFullName.TryGetValue(category, out var catRow))
                 return $"Error: category '{category}' not found. Call list_categories to see available categories.";
 
-            var oid = FirebirdDb.Str(catRow["Oid"]);
+            var oid = catRow.Str("Oid");
 
             // Blocking check 1: child categories
             var childRows  = FirebirdDb.ExecuteQuery(conn,
