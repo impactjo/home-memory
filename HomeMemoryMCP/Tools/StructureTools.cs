@@ -144,6 +144,8 @@ public static class StructureTools
         "Call list_statuses for available status names. " +
         "With 'under': restrict search to a sub-tree – more efficient and token-saving " +
         "than a global search. At least one of searchTerm, under, status, or category must be provided. " +
+        "With 'searchAllFields=true': also searches in Purpose, Note, Description, UserManual, and Position – " +
+        "useful when a keyword appears in a field but not in the element name. " +
         "Not suitable for browsing all content of an area – for that use get_structure_overview(under=..., structuralAreasOnly=false) which returns a complete tree without a result limit. " +
         "Note: physical lines (pipes, cables, conduits) are often documented as connections, not elements – " +
         "also call get_connections with searchTerm when searching for cables, pipes, or conduits.")]
@@ -151,7 +153,8 @@ public static class StructureTools
         [Description("Search term, e.g. 'socket'. Empty = all elements (only useful with under, status, or category).")] string searchTerm = "",
         [Description("Path filter: only elements below this path, e.g. 'House/FF' or 'House/GF/Office'.")] string under = "",
         [Description("Status filter: 'Existing'/'Planned'/'Removed' for type-based filter; otherwise exact name match, partial match as fallback. Call list_statuses for names.")] string status = "",
-        [Description("Category filter: partial name match (e.g. 'socket'), full path with '/' (e.g. 'Electrical/Lighting'), or short name. Includes all subcategories. Call list_categories for available names.")] string category = "")
+        [Description("Category filter: partial name match (e.g. 'socket'), full path with '/' (e.g. 'Electrical/Lighting'), or short name. Includes all subcategories. Call list_categories for available names.")] string category = "",
+        [Description("Also search in Purpose, Note, Description, UserManual, and Position. Default: false (name/path only).")] bool? searchAllFields = null)
     {
         searchTerm = searchTerm.Trim();
         under      = under.Trim().TrimEnd('/');
@@ -178,10 +181,23 @@ public static class StructureTools
 
             if (!string.IsNullOrEmpty(searchTerm))
             {
-                conditions.Add("(UPPER(et.\"Name\") LIKE ? OR UPPER(et.FULLNAME) LIKE ?)");
                 var term = $"%{searchTerm.ToUpperInvariant()}%";
-                paramList.Add(term);
-                paramList.Add(term);
+                if (searchAllFields == true)
+                {
+                    conditions.Add("(UPPER(et.\"Name\") LIKE ? OR UPPER(et.FULLNAME) LIKE ?" +
+                                   " OR UPPER(ce.\"Purpose\") LIKE ? OR UPPER(ce.\"Note\") LIKE ?" +
+                                   " OR UPPER(ce.\"Description\") LIKE ? OR UPPER(ce.\"UserManual\") LIKE ?" +
+                                   " OR UPPER(et.\"Position\") LIKE ?)");
+                    paramList.Add(term); paramList.Add(term);
+                    paramList.Add(term); paramList.Add(term);
+                    paramList.Add(term); paramList.Add(term); paramList.Add(term);
+                }
+                else
+                {
+                    conditions.Add("(UPPER(et.\"Name\") LIKE ? OR UPPER(et.FULLNAME) LIKE ?)");
+                    paramList.Add(term);
+                    paramList.Add(term);
+                }
             }
             if (!string.IsNullOrEmpty(under))
             {
@@ -239,13 +255,16 @@ public static class StructureTools
 
             // When filtering by category, fetch with CAT_OID and apply in-memory filter (OIDs are binary in Firebird).
             // When not filtering by category, use FIRST 101 for efficient truncation detection.
-            var catSelect = catOids is not null ? """, ci."Category" AS CAT_OID""" : "";
-            var catJoin   = catOids is not null ? """LEFT JOIN "CItem" ci ON ci."Oid" = et."Oid" """ : "";
-            var firstClause = catOids is null ? "FIRST 101 " : "";
+            var catSelect     = catOids is not null ? """, ci."Category" AS CAT_OID""" : "";
+            var catJoin       = catOids is not null ? """LEFT JOIN "CItem" ci ON ci."Oid" = et."Oid" """ : "";
+            var detailsSelect = searchAllFields == true
+                ? ", ce.\"Purpose\", ce.\"Note\", ce.\"Description\", ce.\"UserManual\""
+                : "";
+            var firstClause   = catOids is null ? "FIRST 101 " : "";
             var where = conditions.Count > 0 ? string.Join(" AND ", conditions) : "1=1";
             var sql   = $"""
                 {SqlQueries.EtreeCte}
-                SELECT {firstClause}et.FULLNAME, et."Name", et."Position", s."Name" AS STATUSNAME{catSelect}
+                SELECT {firstClause}et.FULLNAME, et."Name", et."Position", s."Name" AS STATUSNAME{catSelect}{detailsSelect}
                 FROM ETREE et
                 {catJoin}
                 LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
@@ -295,6 +314,28 @@ public static class StructureTools
                 if (!string.IsNullOrEmpty(pos))        suffix += $"  [{pos}]";
                 if (!string.IsNullOrEmpty(statusName)) suffix += $"  {{{statusName}}}";
                 lines.Add($"{indent}{name}{suffix}");
+
+                if (searchAllFields == true && !string.IsNullOrEmpty(searchTerm))
+                {
+                    var termUp = searchTerm.ToUpperInvariant();
+                    if (!name.ToUpperInvariant().Contains(termUp) && !fullname.ToUpperInvariant().Contains(termUp))
+                    {
+                        var matchField =
+                            row.Str("Purpose").ToUpperInvariant().Contains(termUp)     ? ("Purpose",     row.Str("Purpose"))     :
+                            row.Str("Note").ToUpperInvariant().Contains(termUp)        ? ("Note",        row.Str("Note"))        :
+                            row.Str("Position").ToUpperInvariant().Contains(termUp)    ? ("Position",    row.Str("Position"))    :
+                            row.Str("Description").ToUpperInvariant().Contains(termUp) ? ("Description", row.Str("Description")) :
+                            row.Str("UserManual").ToUpperInvariant().Contains(termUp)  ? ("UserManual",  row.Str("UserManual"))  :
+                            default;
+                        if (matchField != default)
+                        {
+                            var snippet = matchField.Item2.Length > 80
+                                ? matchField.Item2[..80].TrimEnd() + "…"
+                                : matchField.Item2;
+                            lines.Add($"{indent}  ↳ {matchField.Item1}: {snippet}");
+                        }
+                    }
+                }
             }
             if (truncated)
                 lines.Add("\n(Showing first 100 results – refine your search or use get_by_category / get_structure_overview for complete results.)");
