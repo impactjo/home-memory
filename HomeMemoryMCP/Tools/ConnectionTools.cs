@@ -22,13 +22,16 @@ public static class ConnectionTools
         "results show the category of each match, which you can then pass as the category parameter. " +
         "searchTerm filters by connection name (partial, case-insensitive) – " +
         "use this to find connections by keyword, e.g. searchTerm='conduit' or searchTerm='leerrohr'. " +
+        "With searchAllFields=true, searchTerm also matches Route, Purpose, Note, and Description – " +
+        "useful when a keyword appears in a field other than the connection name. " +
         "Returns up to 100 connections; refine with category, under, or searchTerm for complete results. " +
         "Note: conduit/cable endpoints may also be documented as elements – " +
         "combine with find_element(searchTerm) for a complete picture.")]
     public static string GetConnections(
         [Description("Connection category: partial name (e.g. 'Cable'), full path with '/' (e.g. 'Electrical/Cable'), or short name. Includes all subcategories. Empty = all. Call list_categories for names.")] string category = "",
         [Description("Spatial filter: connections whose source or destination is under this path.")] string under = "",
-        [Description("Filter by connection name (partial match, case-insensitive), e.g. 'conduit' or 'leerrohr'.")] string searchTerm = "")
+        [Description("Filter by connection name (partial match, case-insensitive), e.g. 'conduit' or 'leerrohr'.")] string searchTerm = "",
+        [Description("Also search in Route, Purpose, Note, and Description. Default: false (name only).")] bool? searchAllFields = null)
     {
         category   = category.Trim();
         under      = under.Trim().TrimEnd('/');
@@ -56,19 +59,39 @@ public static class ConnectionTools
                     return $"Error: category '{category}' not found. Call list_categories for available category names.";
             }
 
-            var sql = new StringBuilder("""
+            var detailsSelect = searchAllFields == true
+                ? """, ce."Purpose", ce."Note", ce."Description" """
+                : "";
+            var ceJoin = searchAllFields == true
+                ? """LEFT JOIN "CEntity" ce ON ce."Oid" = c."Oid" """
+                : "";
+            var sql = new StringBuilder($"""
                 SELECT c."Name", c."Source", c."Destination", c."Route", c."Length",
-                       cat."Name" AS CATNAME, ci."Category" AS CAT_OID
+                       cat."Name" AS CATNAME, ci."Category" AS CAT_OID{detailsSelect}
                 FROM "Connection" c
                 JOIN "CItem"    ci  ON ci."Oid"  = c."Oid"
                 JOIN "Category" cat ON cat."Oid" = ci."Category"
-                WHERE 1=1
+                {ceJoin}WHERE 1=1
                 """);
             var paramList = new List<object?>();
             if (!string.IsNullOrEmpty(searchTerm))
             {
-                sql.Append(" AND UPPER(c.\"Name\") LIKE ?");
-                paramList.Add($"%{searchTerm.ToUpperInvariant()}%");
+                var term = $"%{searchTerm.ToUpperInvariant()}%";
+                if (searchAllFields == true)
+                {
+                    sql.Append(" AND (UPPER(c.\"Name\") LIKE ?" +
+                               " OR UPPER(c.\"Route\") LIKE ?" +
+                               " OR UPPER(ce.\"Purpose\") LIKE ?" +
+                               " OR UPPER(ce.\"Note\") LIKE ?" +
+                               " OR UPPER(ce.\"Description\") LIKE ?)");
+                    paramList.Add(term); paramList.Add(term);
+                    paramList.Add(term); paramList.Add(term); paramList.Add(term);
+                }
+                else
+                {
+                    sql.Append(" AND UPPER(c.\"Name\") LIKE ?");
+                    paramList.Add(term);
+                }
             }
             sql.Append(" ORDER BY c.\"Source\", c.\"Name\"");
 
@@ -109,7 +132,9 @@ public static class ConnectionTools
 
             var scope   = !string.IsNullOrEmpty(under)      ? $" under '{under}'"        : "";
             var catLbl  = !string.IsNullOrEmpty(category)   ? $"'{category}'"            : "all categories";
-            var termLbl = !string.IsNullOrEmpty(searchTerm) ? $" name~'{searchTerm}'"    : "";
+            var termLbl = !string.IsNullOrEmpty(searchTerm)
+                ? (searchAllFields == true ? $" ~'{searchTerm}'" : $" name~'{searchTerm}'")
+                : "";
 
             if (results.Count == 0)
             {
@@ -137,6 +162,27 @@ public static class ConnectionTools
                 lines.Add($"    --> {dst}  [{name}]{detail}");
                 if (!string.IsNullOrEmpty(route))
                     lines.Add($"        Route: {route}");
+
+                if (searchAllFields == true && !string.IsNullOrEmpty(searchTerm))
+                {
+                    var termUp = searchTerm.ToUpperInvariant();
+                    if (!name.ToUpperInvariant().Contains(termUp))
+                    {
+                        // Route is already shown above — skip it for the hint, show only non-visible fields
+                        var matchField =
+                            r.Str("Purpose").ToUpperInvariant().Contains(termUp)     ? ("Purpose",     r.Str("Purpose"))     :
+                            r.Str("Note").ToUpperInvariant().Contains(termUp)        ? ("Note",        r.Str("Note"))        :
+                            r.Str("Description").ToUpperInvariant().Contains(termUp) ? ("Description", r.Str("Description")) :
+                            default;
+                        if (matchField != default)
+                        {
+                            var snippet = matchField.Item2.Length > 80
+                                ? matchField.Item2[..80].TrimEnd() + "…"
+                                : matchField.Item2;
+                            lines.Add($"        ↳ {matchField.Item1}: {snippet}");
+                        }
+                    }
+                }
             }
             if (truncated)
                 lines.Add($"\n(Showing first 100 of {totalCount} connections – narrow with category, under, or searchTerm.)");
