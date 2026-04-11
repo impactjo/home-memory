@@ -168,7 +168,7 @@ See [Setup Guide](docs/SETUP-GUIDE.md) for details on Firebird configuration and
 
 ```
 You ──── AI Assistant ──── Home Memory MCP ──── Local Database
-              (natural language)      (22 tools)       (Firebird Embedded)
+              (natural language)      (20+ tools)       (Firebird, single file)
 ```
 
 Home Memory implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), an open standard that lets AI assistants use external tools. When you talk to your AI about your home, it calls Home Memory's tools behind the scenes — reading, creating, updating, and searching your home data.

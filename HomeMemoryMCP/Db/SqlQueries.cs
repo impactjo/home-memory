@@ -7,8 +7,9 @@
 /// </summary>
 public static class SqlQueries
 {
-    public const string EtreeCte = """
-        WITH RECURSIVE ETREE AS (
+    /// <summary>CTE body without the WITH RECURSIVE wrapper — for composing multiple CTEs.</summary>
+    public const string EtreeCteBody = """
+
             SELECT
                 e."Oid",
                 e."Name",
@@ -42,11 +43,14 @@ public static class SqlQueries
                 parent.DEPTH + 1
             FROM "Element" e
             JOIN ETREE parent ON e."PartOfElement" = parent."Oid"
-        )
+
         """;
 
-    public const string CatCte = """
-        WITH RECURSIVE CAT_TREE AS (
+    public const string EtreeCte = $"WITH RECURSIVE ETREE AS ({EtreeCteBody})";
+
+    /// <summary>CTE body without the WITH RECURSIVE wrapper — for composing multiple CTEs.</summary>
+    public const string CatCteBody = """
+
             SELECT
                 cat."Oid", cat."Name", cat."ShortName", cat."IsAreaCategory",
                 CAST(COALESCE(NULLIF(TRIM(cat."ShortName"), ''), cat."Name") AS VARCHAR(500)) AS CAT_FULLNAME,
@@ -60,6 +64,8 @@ public static class SqlQueries
                 parent.CAT_DEPTH + 1
             FROM "Category" cat
             JOIN CAT_TREE parent ON cat."ParentCategory" = parent."Oid"
-        )
+
         """;
+
+    public const string CatCte = $"WITH RECURSIVE CAT_TREE AS ({CatCteBody})";
 }

@@ -432,4 +432,119 @@ public static class StructureTools
             return $"Error: {ex.Message}";
         }
     }
+
+    // ── Tool: get_recent_changes ────────────────────────────────────────────
+
+    [McpServerTool(Name = "get_recent_changes")]
+    [Description(
+        "Shows recently created or updated items across elements, connections, and categories – " +
+        "newest first. Useful after a documentation session to review what was added or changed. " +
+        "With 'type': restrict to 'element', 'connection', or 'category'.")]
+    public static string GetRecentChanges(
+        [Description("Maximum number of results (1–200). Default: 20.")] int limit = 20,
+        [Description("Restrict to item type: 'element', 'connection', or 'category'. Empty = all.")] string type = "")
+    {
+        type = type.Trim().ToLowerInvariant();
+        if (limit < 1) limit = 1;
+        if (limit > 200) limit = 200;
+        if (!string.IsNullOrEmpty(type) && type is not "element" and not "connection" and not "category")
+            return "Error: 'type' must be 'element', 'connection', or 'category'.";
+
+        try
+        {
+            using var conn = FirebirdDb.OpenConnection();
+
+            var includeElements    = string.IsNullOrEmpty(type) || type == "element";
+            var includeConnections = string.IsNullOrEmpty(type) || type == "connection";
+            var includeCategories  = string.IsNullOrEmpty(type) || type == "category";
+
+            // Firebird CTE syntax: WITH RECURSIVE cte1 AS (...), cte2 AS (...)
+            // — single WITH RECURSIVE keyword, then comma-separated CTE definitions.
+            var cteParts = new List<string>();
+            if (includeElements)    cteParts.Add("ETREE AS (" + SqlQueries.EtreeCteBody + ")");
+            if (includeCategories)  cteParts.Add("CAT_TREE AS (" + SqlQueries.CatCteBody + ")");
+
+            var unions = new List<string>();
+            if (includeElements)
+                unions.Add("""
+                    SELECT
+                        et.FULLNAME AS ITEM_NAME,
+                        'element' AS ITEM_TYPE,
+                        ce."CreatedOn",
+                        ce."UpdatedOn",
+                        COALESCE(ce."UpdatedOn", ce."CreatedOn") AS CHANGE_TS
+                    FROM "Element" e
+                    JOIN "CEntity" ce ON ce."Oid" = e."Oid"
+                    JOIN ETREE et ON et."Oid" = e."Oid"
+                    """);
+            if (includeConnections)
+                unions.Add("""
+                    SELECT
+                        c."Name" AS ITEM_NAME,
+                        'connection' AS ITEM_TYPE,
+                        ce."CreatedOn",
+                        ce."UpdatedOn",
+                        COALESCE(ce."UpdatedOn", ce."CreatedOn") AS CHANGE_TS
+                    FROM "Connection" c
+                    JOIN "CEntity" ce ON ce."Oid" = c."Oid"
+                    """);
+            if (includeCategories)
+                unions.Add("""
+                    SELECT
+                        ct.CAT_FULLNAME AS ITEM_NAME,
+                        'category' AS ITEM_TYPE,
+                        ce."CreatedOn",
+                        ce."UpdatedOn",
+                        COALESCE(ce."UpdatedOn", ce."CreatedOn") AS CHANGE_TS
+                    FROM "Category" cat
+                    JOIN "CEntity" ce ON ce."Oid" = cat."Oid"
+                    JOIN CAT_TREE ct ON ct."Oid" = cat."Oid"
+                    """);
+
+            var ctePrefix = cteParts.Count > 0
+                ? "WITH RECURSIVE " + string.Join(", ", cteParts) + " "
+                : "";
+
+            var sql = $"""
+                {ctePrefix}SELECT * FROM (
+                    {string.Join("\n                    UNION ALL\n", unions)}
+                ) items
+                ORDER BY CHANGE_TS DESC NULLS LAST
+                ROWS 1 TO {limit}
+                """;
+
+            var rows = FirebirdDb.ExecuteQuery(conn, sql);
+
+            if (rows.Count == 0)
+                return string.IsNullOrEmpty(type)
+                    ? "No items found in the database."
+                    : $"No {type} items found.";
+
+            var typeLbl = string.IsNullOrEmpty(type) ? "" : $", type={type}";
+            var lines = new List<string> { $"Recent changes ({rows.Count}{typeLbl}, newest first):\n" };
+
+            foreach (var row in rows)
+            {
+                var ts = row.GetValueOrDefault("CHANGE_TS");
+                var tsStr = ts is DateTime dt ? dt.ToString("yyyy-MM-dd HH:mm") : "                ";
+                var createdOn = row.GetValueOrDefault("CreatedOn");
+                var updatedOn = row.GetValueOrDefault("UpdatedOn");
+                // Legacy records imported from external tools may have CreatedOn = NULL.
+                // [updated] whenever UpdatedOn is set and differs from CreatedOn (or CreatedOn is absent).
+                var noCreatedOn = createdOn is null or DBNull;
+                var label = (updatedOn is not null and not DBNull &&
+                             (noCreatedOn || !updatedOn.Equals(createdOn)))
+                    ? "[updated]"
+                    : "[created]";
+                var itemType = row.Str("ITEM_TYPE");
+                var itemName = row.Str("ITEM_NAME");
+                lines.Add($"{tsStr}  {label,-10}  {itemType,-12}  {itemName}");
+            }
+            return string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            return $"Error: {ex.Message}";
+        }
+    }
 }
