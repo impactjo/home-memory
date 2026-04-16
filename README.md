@@ -36,6 +36,8 @@ Tell your AI about your heat pump, your car, your power tools, or your wine coll
 
 ## What you can do
 
+[![SafeSkill 92/100](https://img.shields.io/badge/SafeSkill-92%2F100_Verified%20Safe-brightgreen)](https://safeskill.dev/scan/impactjo-home-memory)
+
 **Document anything by just talking:**
 > "I have a Daikin Altherma heat pump in the utility room."
 
