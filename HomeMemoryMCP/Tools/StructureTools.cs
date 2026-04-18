@@ -243,7 +243,7 @@ public static class StructureTools
             HashSet<string>? catOids = null;
             if (!string.IsNullOrEmpty(category))
             {
-                catOids = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category);
+                catOids = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category)?.Oids;
                 if (catOids is null || catOids.Count == 0)
                 {
                     var desc2   = !string.IsNullOrEmpty(searchTerm) ? $"'{searchTerm}'" : "all elements";

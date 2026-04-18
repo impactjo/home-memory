@@ -91,8 +91,8 @@ public static class CategoryTools
         "All elements of an object category/trade, grouped by location. " +
         "Examples: get_by_category('Socket') → all sockets in the building; " +
         "get_by_category('Lighting', under='House/GF') → all lights on the ground floor. " +
-        "Category name: partial text is sufficient (case-insensitive). " +
-        "Without '/', partial text may match multiple categories; results include all matched categories and their descendants. " +
+        "Category name: exact name or short name wins; partial text matches as fallback if no exact match exists. " +
+        "Without '/', exact match is preferred; partial text may still match multiple categories. " +
         "With '/' the full category path must match exactly (e.g. 'Electrical/Cable'). " +
         "Available categories: list_categories. " +
         "Elements with status Planned or Removed are marked with their status name.")]
@@ -109,42 +109,12 @@ public static class CategoryTools
         try
         {
             using var conn = FirebirdDb.OpenConnection();
-            var allCats = LoadCatTree(conn);
 
-            List<Row> matched;
-            if (category.Contains('/'))
-            {
-                // Path notation: exact CAT_FULLNAME match (e.g. 'HKL/Heizung')
-                matched = allCats.Where(c =>
-                    string.Equals(c.Str("CAT_FULLNAME"), category, StringComparison.OrdinalIgnoreCase)
-                ).ToList();
-            }
-            else
-            {
-                // Partial text match on Name or ShortName
-                var searchUpper = category.ToUpperInvariant();
-                matched = allCats.Where(c =>
-                    c.Str("Name").ToUpperInvariant().Contains(searchUpper) ||
-                    c.Str("ShortName").ToUpperInvariant().Contains(searchUpper)
-                ).ToList();
-            }
-
-            if (matched.Count == 0)
+            var resolution = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category);
+            if (resolution is null)
                 return $"Error: category '{category}' not found. Call list_categories for available categories.";
 
-            var includedOids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var m in matched)
-            {
-                var mFn    = m.Str("CAT_FULLNAME");
-                var prefix = mFn + "/";
-                foreach (var c in allCats)
-                {
-                    var cFn = c.Str("CAT_FULLNAME");
-                    if (string.Equals(cFn, mFn, StringComparison.OrdinalIgnoreCase) ||
-                        cFn.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                        includedOids.Add(FirebirdDb.OidKey(c["Oid"]));
-                }
-            }
+            var includedOids = resolution.Oids;
 
             var paramList = new List<object?>();
             var underClause = "";
@@ -180,7 +150,7 @@ public static class CategoryTools
             if (rows.Count == 0)
                 return $"No elements of category '{category}'{scope} found.\nTip: call list_categories for available categories.";
 
-            var catLabel = matched.Count == 1 ? matched[0].Str("Name") : $"'{category}'";
+            var catLabel = resolution.SingleMatchName ?? $"'{category}'";
             bool multiCat = includedOids.Count > 1;
             var lines = new List<string> { $"{catLabel} elements{scope} ({rows.Count}):\n" };
 

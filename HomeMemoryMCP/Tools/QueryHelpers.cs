@@ -117,12 +117,14 @@ internal static class QueryHelpers
                       $"Use the full path instead: {paths}.");
     }
 
+    internal sealed record CategoryResolution(HashSet<string> Oids, string? SingleMatchName, int DirectMatchCount);
+
     /// <summary>
     /// Resolves a category search term to OIDs of matching categories plus all their descendants.
     /// Priority: exact Name/ShortName match first; partial text match only as fallback.
     /// Path notation (with '/') = exact path match. Returns null if no matching category is found.
     /// </summary>
-    internal static HashSet<string>? ResolveCategoryOidsWithDescendants(FbConnection conn, string category)
+    internal static CategoryResolution? ResolveCategoryOidsWithDescendants(FbConnection conn, string category)
     {
         category = NormalizePath(category);
 
@@ -160,7 +162,7 @@ internal static class QueryHelpers
 
         if (matched.Count == 0) return null;
 
-        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var oids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var m in matched)
         {
             var mFn    = m.Str("CAT_FULLNAME");
@@ -170,10 +172,12 @@ internal static class QueryHelpers
                 var cFn = c.Str("CAT_FULLNAME");
                 if (string.Equals(cFn, mFn, StringComparison.OrdinalIgnoreCase) ||
                     cFn.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    result.Add(FirebirdDb.OidKey(c["Oid"]));
+                    oids.Add(FirebirdDb.OidKey(c["Oid"]));
             }
         }
-        return result;
+
+        var singleName = matched.Count == 1 ? matched[0].Str("Name") : null;
+        return new CategoryResolution(oids, singleName, matched.Count);
     }
 
     internal static string? ResolveStatusOid(FbConnection conn, string? status)

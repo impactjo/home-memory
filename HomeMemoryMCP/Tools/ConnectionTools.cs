@@ -54,7 +54,7 @@ public static class ConnectionTools
             HashSet<string>? catOids = null;
             if (!string.IsNullOrEmpty(category))
             {
-                catOids = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category);
+                catOids = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category)?.Oids;
                 if (catOids is null || catOids.Count == 0)
                     return $"Error: category '{category}' not found. Call list_categories for available category names.";
             }
