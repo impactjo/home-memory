@@ -6,9 +6,17 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using System.Text.Json;
 
-FirstRunSetup.EnsureDatabase();
-DbMigrator.MigrateDatabase();
-DbSeeder.SeedIfEmpty();
+try
+{
+    FirstRunSetup.EnsureDatabase();
+    DbMigrator.MigrateDatabase();
+    DbSeeder.SeedIfEmpty();
+}
+catch (FirebirdSql.Data.FirebirdClient.FbException ex)
+{
+    Console.Error.WriteLine($"[HomeMemory] Failed to open database '{FirebirdDb.GetDbPath()}': {ex.Message}");
+    return;
+}
 
 var version = typeof(Program).Assembly
     .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
