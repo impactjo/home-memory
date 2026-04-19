@@ -91,8 +91,8 @@ public static class CategoryTools
         "All elements of an object category/trade, grouped by location. " +
         "Examples: get_by_category('Socket') → all sockets in the building; " +
         "get_by_category('Lighting', under='House/GF') → all lights on the ground floor. " +
-        "Category name: exact name or short name wins; partial text matches as fallback if no exact match exists. " +
-        "Without '/', exact match is preferred; partial text may still match multiple categories. " +
+        "Category name: exact Name/ShortName match wins; partial text only as fallback when no exact match exists. " +
+        "If the search term matches multiple categories, an error lists all full paths — use a full path (with '/') to disambiguate. " +
         "With '/' the full category path must match exactly (e.g. 'Electrical/Cable'). " +
         "Available categories: list_categories. " +
         "Elements with status Planned or Removed are marked with their status name.")]
@@ -110,7 +110,8 @@ public static class CategoryTools
         {
             using var conn = FirebirdDb.OpenConnection();
 
-            var resolution = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category);
+            var (resolution, resolveError) = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category);
+            if (resolveError is not null) return resolveError;
             if (resolution is null)
                 return $"Error: category '{category}' not found. Call list_categories for available categories.";
 

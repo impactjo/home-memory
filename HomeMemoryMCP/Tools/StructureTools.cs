@@ -153,7 +153,7 @@ public static class StructureTools
         [Description("Search term, e.g. 'socket'. Empty = all elements (only useful with under, status, or category).")] string searchTerm = "",
         [Description("Path filter: only elements below this path, e.g. 'House/FF' or 'House/GF/Office'.")] string under = "",
         [Description("Status filter: 'Existing'/'Planned'/'Removed' for type-based filter; otherwise exact name match, partial match as fallback. Call list_statuses for names.")] string status = "",
-        [Description("Category filter: partial name match (e.g. 'socket'), full path with '/' (e.g. 'Electrical/Lighting'), or short name. Includes all subcategories. Call list_categories for available names.")] string category = "",
+        [Description("Category filter: exact name or short name (e.g. 'Socket'), full path with '/' (e.g. 'Electrical/Lighting'). Partial match as fallback; if ambiguous, an error lists full paths. Includes all subcategories.")] string category = "",
         [Description("Also search in Purpose, Note, Description, UserManual, and Position. Default: false (name/path only).")] bool? searchAllFields = null)
     {
         searchTerm = searchTerm.Trim();
@@ -243,8 +243,10 @@ public static class StructureTools
             HashSet<string>? catOids = null;
             if (!string.IsNullOrEmpty(category))
             {
-                catOids = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category)?.Oids;
-                if (catOids is null || catOids.Count == 0)
+                var (catResolution, catError) = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category);
+                if (catError is not null) return catError;
+                catOids = catResolution?.Oids;
+                if (catOids is null)
                 {
                     var desc2   = !string.IsNullOrEmpty(searchTerm) ? $"'{searchTerm}'" : "all elements";
                     var scope2  = !string.IsNullOrEmpty(under)  ? $" under '{under}'"        : "";

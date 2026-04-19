@@ -28,7 +28,7 @@ public static class ConnectionTools
         "Note: conduit/cable endpoints may also be documented as elements – " +
         "combine with find_element(searchTerm) for a complete picture.")]
     public static string GetConnections(
-        [Description("Connection category: partial name (e.g. 'Cable'), full path with '/' (e.g. 'Electrical/Cable'), or short name. Includes all subcategories. Empty = all. Call list_categories for names.")] string category = "",
+        [Description("Connection category: exact name or short name (e.g. 'Cable'), full path with '/' (e.g. 'Electrical/Cable'). Partial match as fallback; if ambiguous, an error lists full paths. Includes all subcategories.")] string category = "",
         [Description("Spatial filter: connections whose source or destination is under this path.")] string under = "",
         [Description("Filter by connection name (partial match, case-insensitive), e.g. 'conduit' or 'leerrohr'.")] string searchTerm = "",
         [Description("Also search in Route, Purpose, Note, and Description. Default: false (name only).")] bool? searchAllFields = null)
@@ -54,8 +54,10 @@ public static class ConnectionTools
             HashSet<string>? catOids = null;
             if (!string.IsNullOrEmpty(category))
             {
-                catOids = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category)?.Oids;
-                if (catOids is null || catOids.Count == 0)
+                var (catResolution, catError) = QueryHelpers.ResolveCategoryOidsWithDescendants(conn, category);
+                if (catError is not null) return catError;
+                catOids = catResolution?.Oids;
+                if (catOids is null)
                     return $"Error: category '{category}' not found. Call list_categories for available category names.";
             }
 
