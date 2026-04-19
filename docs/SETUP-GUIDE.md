@@ -2,7 +2,7 @@
 
 ## Using the Release (recommended)
 
-Download the release ZIP from [GitHub Releases](../../releases) and follow the [Quick Start](../README.md#quick-start-windows) in the README. The release is a self-contained build — no .NET SDK and no Firebird installation required.
+Download the release ZIP from [GitHub Releases](../../releases) and follow the [Quick Start](../README.md#quick-start-windows) in the README. The release is a self-contained build, with no .NET SDK and no Firebird installation required.
 
 ## Configuration
 
@@ -14,7 +14,7 @@ Download the release ZIP from [GitHub Releases](../../releases) and follow the [
 | `HOME_MEMORY_FBCLIENT` | Path to Firebird client library | See search order below |
 | `FIREBIRD` | Firebird runtime directory | Set automatically by the server (process-level only, not persistent) |
 
-On first run, Home Memory automatically creates the database directory and seeds it with over 100 categories and a default house structure. To use a custom database location, pass `HOME_MEMORY_DB_PATH` via `--env` when registering (see examples below).
+On first run, Home Memory automatically creates the database directory and seeds it with over 100 editable categories and a default house structure. To use a custom database location, pass `HOME_MEMORY_DB_PATH` via `--env` when registering (see examples below).
 
 ### Firebird client library search order
 
@@ -134,10 +134,10 @@ The Firebird client library alone is not enough. Firebird Embedded loads additio
 
 ### Linux / macOS
 
-The equivalent shared libraries (`.so` / `.dylib`) plus `firebird.msg` and ICU data files. The exact filenames depend on your Firebird installation — check your Firebird 3 install directory.
+The equivalent shared libraries (`.so` / `.dylib`) plus `firebird.msg` and ICU data files. The exact filenames depend on your Firebird installation; check your Firebird 3 install directory.
 
 If any required file is missing, you'll see:
-`FbException: operating system directive CreateFile failed` (Windows) or a similar I/O error on other platforms. This error is misleading — it's not about file permissions, but missing Firebird runtime files.
+`FbException: operating system directive CreateFile failed` (Windows) or a similar I/O error on other platforms. This error is misleading: it's not about file permissions, but missing Firebird runtime files.
 
 ---
 
