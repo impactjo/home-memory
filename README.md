@@ -11,7 +11,11 @@
 </p>
 
 <p align="center">
-  <a href="https://home-memory.com">Website with demo video, screenshots, and examples</a>
+  <a href="https://www.youtube.com/watch?v=J9ziKLE8NO8">
+    <img src="https://img.youtube.com/vi/J9ziKLE8NO8/maxresdefault.jpg" width="600" alt="Watch the Home Memory demo on YouTube">
+  </a>
+  <br>
+  <a href="https://www.youtube.com/watch?v=J9ziKLE8NO8">▶ Watch the 1-minute demo on YouTube</a>
 </p>
 
 ---
@@ -245,4 +249,8 @@ Home Memory builds on a proven data model from [Smartconstruct](https://smartcon
 
 [AGPL-3.0](LICENSE)
 
-For commercial licensing options, please [open an issue](../../issues).
+---
+
+<p align="center">
+  <a href="https://home-memory.com">home-memory.com</a>
+</p>
