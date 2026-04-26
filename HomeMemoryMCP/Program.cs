@@ -9,12 +9,18 @@ using System.Text.Json;
 try
 {
     FirstRunSetup.EnsureDatabase();
+    DbSchemaVerifier.Verify();
     DbMigrator.MigrateDatabase();
     DbSeeder.SeedIfEmpty();
 }
 catch (FirebirdSql.Data.FirebirdClient.FbException ex)
 {
-    Console.Error.WriteLine($"[HomeMemory] Failed to open database '{FirebirdDb.GetDbPath()}': {ex.Message}");
+    Console.Error.WriteLine($"[HomeMemory] Failed to open database ({DbConfig.Current.DisplayName}): {ex.Message}");
+    return;
+}
+catch (InvalidOperationException ex)
+{
+    Console.Error.WriteLine($"[HomeMemory] {ex.Message}");
     return;
 }
 
@@ -23,7 +29,7 @@ var version = typeof(Program).Assembly
     ?.InformationalVersion ?? "unknown";
 
 Console.Error.WriteLine($"[HomeMemory] Home Memory {version} starting...");
-Console.Error.WriteLine($"[HomeMemory] Database: {FirebirdDb.GetDbPath()}");
+Console.Error.WriteLine($"[HomeMemory] Database: {DbConfig.Current.DisplayName}");
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Logging.ClearProviders();

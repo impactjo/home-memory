@@ -8,6 +8,9 @@ public static class FirstRunSetup
 {
     public static void EnsureDatabase()
     {
+        if (!DbConfig.Current.RequiresLocalTemplate)
+            return;
+
         var dbPath = FirebirdDb.GetDbPath();
 
         if (File.Exists(dbPath))

@@ -56,23 +56,7 @@ public static class FirebirdDb
 
     public static FbConnection OpenConnection()
     {
-        // Pooling off by default: Firebird Embedded holds the file lock for the lifetime
-        // of the pool, preventing a second MCP process from opening the same DB.
-        // Set HOME_MEMORY_DB_POOLING=true to enable (e.g. for tests or single-session use).
-        var pooling = Environment.GetEnvironmentVariable("HOME_MEMORY_DB_POOLING")
-            is "true" or "1";
-        var cs = new FbConnectionStringBuilder
-        {
-            Database      = GetDbPath(),
-            UserID        = "SYSDBA",
-            Password      = "masterkey",
-            Charset       = "UTF8",
-            ServerType    = FbServerType.Embedded,
-            ClientLibrary = GetClientLibPath(),
-            Pooling       = pooling,
-        }.ConnectionString;
-
-        var conn = new FbConnection(cs);
+        var conn = new FbConnection(DbConfig.Current.ConnectionString);
         conn.Open();
         return conn;
     }
