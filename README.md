@@ -158,6 +158,16 @@ Creates a planned element, so you can track what exists and what's coming.
 
 **If it works, you're done.** Everything from here is just talking to your AI. Add rooms, rename floors, document your electrical panel, upload a photo of a device. The AI handles the rest.
 
+### 4. Use it from your phone (optional)
+
+Home Memory runs locally, but you can use it from your phone through [Claude Code Remote Control](https://code.claude.com/docs/en/remote-control).
+
+Use Home Memory from a local Claude Code session, enable Remote Control, then continue the same session from the Claude mobile app or `claude.ai/code`. Your Home Memory database and MCP server stay on your machine; the phone is just a remote window into that running session.
+
+Useful when you are standing at the fuse box or next to an appliance and want to ask your home directly.
+
+Requires Claude Code Remote Control, a signed-in Claude account, and a running local Claude Code process.
+
 ### Build from Source (advanced)
 
 Requires [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) and [Firebird 3.0](https://firebirdsql.org/en/firebird-3-0/).
