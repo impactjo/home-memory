@@ -1,10 +1,12 @@
-﻿using HomeMemory.MCP.Db;
-using HomeMemory.MCP.Tools;
+using HomeMemory.MCP;
+using HomeMemory.MCP.Db;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
-using System.Text.Json;
+
+var transport = Environment.GetEnvironmentVariable("HOME_MEMORY_TRANSPORT")?.Trim() ?? "stdio";
+var isHttp = string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase);
 
 try
 {
@@ -31,28 +33,39 @@ var version = typeof(Program).Assembly
 Console.Error.WriteLine($"[HomeMemory] Home Memory {version} starting...");
 Console.Error.WriteLine($"[HomeMemory] Database: {DbConfig.Current.DisplayName}");
 
-var builder = Host.CreateApplicationBuilder(args);
-builder.Logging.ClearProviders();
-builder.Services.AddMcpServer(options =>
-    {
-        options.ServerInfo = new() { Name = "Home Memory", Version = version };
-        options.ServerInstructions =
-            """
-            Home Memory gives your AI assistant persistent memory for everything in and around your home.
+if (isHttp)
+{
+    var bind = Environment.GetEnvironmentVariable("HOME_MEMORY_BIND")?.Trim() ?? "127.0.0.1";
+    var portEnv = Environment.GetEnvironmentVariable("HOME_MEMORY_PORT")?.Trim();
+    var port = int.TryParse(portEnv, out var p) ? p : 5100;
+    var apiKey = Environment.GetEnvironmentVariable("HOME_MEMORY_API_KEY");
 
-            Track physical elements across all domains: rooms, floors & outdoor areas · building materials (walls, windows, flooring, roof) · electrical (circuits, lighting, outlets, PV/solar, wallbox, home automation) · HVAC · plumbing · IT & communications · security (alarm, fire protection, surveillance) · household (appliances, furniture, electronics, valuables) · vehicles (car, motorcycle, e-bike, bicycle, trailer) · tools · landscaping (garden, pool, irrigation) · health · and more.
+    var builder = WebApplication.CreateBuilder(args);
+    builder.Logging.ClearProviders();
+    builder.WebHost.UseUrls($"http://{bind}:{port}");
+    McpServerSetup.AddHomeMcpServer(builder.Services, version).WithHttpTransport();
 
-            Document physical connections between elements (cables, pipes, ducts, conduits).
-            Organise with flexible categories and statuses. All data persists in a local database across conversations.
+    var app = builder.Build();
 
-            IMPORTANT – destructive operations: When a deletion fails because child elements or connections exist, treat the error as a stop signal. Report the full blocked scope to the user and ask for explicit confirmation. Never cascade-delete by removing children or connections first without user confirmation.
-            """;
-    })
-    .WithStdioServerTransport()
-    .WithToolsFromAssembly(typeof(Program).Assembly, new JsonSerializerOptions
-    {
-        TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
-        Converters = { new FlexBoolJsonConverterFactory() }
-    });
+    if (!string.IsNullOrEmpty(apiKey))
+        McpServerSetup.UseBearerAuth(app, apiKey);
 
-await builder.Build().RunAsync();
+    app.MapMcp("/mcp");
+
+    Console.Error.WriteLine($"[HomeMemory] Transport: HTTP");
+    Console.Error.WriteLine($"[HomeMemory] Listening: http://{bind}:{port}/mcp");
+    Console.Error.WriteLine($"[HomeMemory] Auth: {(!string.IsNullOrEmpty(apiKey) ? "Bearer token active" : "none (set HOME_MEMORY_API_KEY to enable)")}");
+    if (bind == "0.0.0.0" && string.IsNullOrEmpty(apiKey))
+        Console.Error.WriteLine($"[HomeMemory] Warning: bound to 0.0.0.0 without an API key - consider setting HOME_MEMORY_API_KEY");
+    Console.Error.WriteLine($"[HomeMemory] Note: HTTP mode - this process owns the database file");
+
+    await app.RunAsync();
+}
+else
+{
+    var builder = Host.CreateApplicationBuilder(args);
+    builder.Logging.ClearProviders();
+    McpServerSetup.AddHomeMcpServer(builder.Services, version).WithStdioServerTransport();
+
+    await builder.Build().RunAsync();
+}

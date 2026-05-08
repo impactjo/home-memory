@@ -42,8 +42,14 @@ public sealed record DbConfig(
     private static DbConfig BuildEmbedded()
     {
         var dbPath = FirebirdDb.GetDbPath();
-        var pooling = Environment.GetEnvironmentVariable("HOME_MEMORY_DB_POOLING")
-            is "true" or "1";
+
+        var transport = Environment.GetEnvironmentVariable("HOME_MEMORY_TRANSPORT")?.Trim() ?? "stdio";
+        var isHttp = string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase);
+
+        var poolingEnv = Environment.GetEnvironmentVariable("HOME_MEMORY_DB_POOLING")?.Trim();
+        var pooling = string.IsNullOrEmpty(poolingEnv)
+            ? isHttp  // HTTP: pool connections; stdio: release after each call
+            : poolingEnv is "true" or "1";
 
         var cs = new FbConnectionStringBuilder
         {
@@ -54,11 +60,12 @@ public sealed record DbConfig(
             ServerType    = FbServerType.Embedded,
             ClientLibrary = FirebirdDb.GetClientLibPath(),
             Pooling       = pooling,
+            MaxPoolSize   = pooling ? 8 : 0,
         }.ConnectionString;
 
         return new DbConfig(
             Mode: DbMode.Embedded,
-            DisplayName: $"Embedded: {dbPath}",
+            DisplayName: $"Embedded [{(isHttp ? "http" : "stdio")}]: {dbPath}",
             ConnectionString: cs,
             RequiresLocalTemplate: true);
     }
