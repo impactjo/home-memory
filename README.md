@@ -235,6 +235,10 @@ The release ZIP is a self-contained Windows build with all dependencies included
 | `HOME_MEMORY_DB_PATH` | Database file location | `%LOCALAPPDATA%\HomeMemory\homememory.scd` (Windows) · `~/.local/share/HomeMemory/homememory.scd` (Linux) · `~/Library/Application Support/HomeMemory/homememory.scd` (macOS) |
 | `HOME_MEMORY_FBCLIENT` | Path to Firebird client library | Bundled with release / Firebird installation |
 
+## HTTP mode (LAN, optional)
+
+Stdio is the default and works for almost everyone. For long-lived local-service or LAN setups, Home Memory can also run as an HTTP server that MCP clients connect to via a bridge such as [`mcp-remote`](https://www.npmjs.com/package/mcp-remote). See [docs/HTTP-MODE.md](docs/HTTP-MODE.md) for configuration, the single-owner constraint, and a Claude Desktop example with optional Bearer authentication.
+
 ## Architecture
 
 - **.NET 10** with [ModelContextProtocol SDK](https://github.com/modelcontextprotocol/csharp-sdk)
