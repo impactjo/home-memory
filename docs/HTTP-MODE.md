@@ -54,6 +54,35 @@ You should see:
 
 The endpoint speaks **Streamable HTTP** (the MCP transport variant). Pointing a browser at it will return a 4xx - that's expected; connect with an MCP client instead.
 
+## Connecting Codex App (native HTTP)
+
+Codex App speaks Streamable HTTP natively. Point it at the URL directly.
+
+1. Open Codex App, **File > Settings**, select **MCP servers**
+2. Click **+ Add server**
+3. **Name:** `home-memory-http`
+4. Choose transport **Streamable HTTP**
+5. **URL:** `http://127.0.0.1:5100/mcp`
+6. If you started Home Memory without `HOME_MEMORY_API_KEY`, leave **Bearer token env var** and **Headers** empty
+7. **Save**, then restart Codex App
+
+For LAN setups, prefer setting `HOME_MEMORY_API_KEY`. In Codex App, **Bearer token env var** expects the **name** of an environment variable, not the token value itself. Set the variable persistently and restart Codex App so it picks up the new environment:
+
+```powershell
+setx HOME_MEMORY_API_KEY your-long-random-key
+```
+
+Codex CLI uses the same config under `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.home-memory-http]
+enabled = true
+url = "http://127.0.0.1:5100/mcp"
+# bearer_token_env_var = "HOME_MEMORY_API_KEY"  # uncomment if API key is set
+```
+
+For non-interactive Codex CLI runs, configure tool approval as needed (e.g. `approval_mode = "approve"` under `[mcp_servers.home-memory-http.tools.<tool_name>]`).
+
 ## Connecting Claude Desktop via `mcp-remote`
 
 Claude Desktop launches MCP servers via stdio commands. Use the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge to forward stdio to your local HTTP server. You need [Node.js](https://nodejs.org/) installed; no global `mcp-remote` install is needed - `npx -y` fetches it on demand.
@@ -118,6 +147,8 @@ Then add the header on the client side. On Windows, pass the value through an en
 ```
 
 Without the header (or with the wrong key) the server returns `401 Unauthorized` and the client disconnects.
+
+For Codex App and Codex CLI, use the **Bearer token env var** field (or the `bearer_token_env_var` setting in `config.toml`). It expects the environment variable name, not the token value. See *Connecting Codex App* above.
 
 ## Exposing on the LAN
 
