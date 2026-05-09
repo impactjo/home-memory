@@ -20,13 +20,15 @@
 
 ---
 
-Home Memory is an [MCP server](https://modelcontextprotocol.io/) that gives your AI assistant structured, persistent knowledge about your home: every room, every device, every pipe and cable, every item you own. It plugs into any AI client on your computer that supports local MCP servers (Claude Desktop, Claude Code, Codex App, Codex CLI, and others) and turns natural conversation into living, queryable documentation of your home and everything in it.
+Home Memory is an [MCP server](https://modelcontextprotocol.io/) that gives your AI assistant structured, persistent knowledge about your home: every room, every device, every pipe and cable, every item you own.
+
+It works with AI clients on your computer that support MCP, including Claude Desktop, Claude Code, Codex App, Codex CLI, and others. You talk naturally; the AI reads and writes your home data through Home Memory's tools.
 
 Document what exists, plan what's coming, and keep track of what's been removed.
 
 No app to learn. No forms to fill out. Your home data stays in a single file on your machine, and the AI *is* your interface.
 
-Tell your AI about your heat pump, your car, your power tools, or your wine collection, and it extracts the relevant details and stores them as structured data in your local database. Snap a photo of a device or hand it an invoice. Same result. Ask "What's in the basement?" or "When is my car due for inspection?" and get real answers from real data, not hallucinations.
+Tell your AI about your heat pump, your car, your power tools, or your wine collection, and it extracts the relevant details and stores them as structured data in your local database. Snap a photo of a device or hand it an invoice. Same result. Ask "What's in the basement?" or "When is my car due for inspection?" and get answers from real data.
 
 <p align="center">
   <img src="docs/demo.png" width="700" alt="Demo in Claude Desktop: One sentence creates two elements. The AI finds the right categories, creates a missing room, and documents everything.">
@@ -237,7 +239,7 @@ The release ZIP is a self-contained Windows build with all dependencies included
 
 ## HTTP mode (LAN, optional)
 
-Stdio is the default and works for almost everyone. For long-lived local-service or LAN setups, Home Memory can also run as an HTTP server that MCP clients connect to via a bridge such as [`mcp-remote`](https://www.npmjs.com/package/mcp-remote). See [docs/HTTP-MODE.md](docs/HTTP-MODE.md) for configuration, the single-owner constraint, and a Claude Desktop example with optional Bearer authentication.
+Stdio is the default and works for almost everyone. HTTP mode lets you run Home Memory as a persistent service on a NAS, homelab box, or another machine on your LAN. See [docs/HTTP-MODE.md](docs/HTTP-MODE.md) for setup, database locking, LAN access, and optional Bearer authentication.
 
 ## Architecture
 

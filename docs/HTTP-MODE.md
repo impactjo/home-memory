@@ -2,8 +2,8 @@
 
 Home Memory ships with two transports:
 
-- **stdio** — the default. The AI client launches `HomeMemoryMCP.exe` directly. Recommended for local single-user setups (Claude Desktop, Codex App, Claude Code).
-- **HTTP** — runs Home Memory as a long-lived local service on a port. Useful when you want one Home Memory process to serve clients that can't launch a stdio command directly, or when you want the server reachable from another machine on your LAN.
+- **stdio** - the default. The AI client launches `HomeMemoryMCP.exe` directly. Recommended for local single-user setups (Claude Desktop, Codex App, Claude Code).
+- **HTTP** - runs Home Memory as a long-lived local service on a port. Useful when you want one Home Memory process to serve clients that can't launch a stdio command directly, or when you want the server reachable from another machine on your LAN.
 
 Stdio is enough for almost everyone. HTTP is for advanced setups.
 
@@ -11,26 +11,24 @@ Stdio is enough for almost everyone. HTTP is for advanced setups.
 
 ## When HTTP mode is the right choice
 
-- You want to keep Home Memory running as a persistent local service (e.g. always-on on a NAS or homelab box) instead of spawning it per session.
-- You want to use Home Memory from a Claude Desktop, Codex App, or other MCP client that can talk to a local HTTP MCP server through a bridge like [`mcp-remote`](https://www.npmjs.com/package/mcp-remote).
-- You want to reach the server from another machine on your LAN.
+- You want Home Memory running on a NAS, homelab box, or always-on PC instead of launching it per AI session.
+- You want to reach Home Memory from another machine on your LAN.
+- You want to experiment with Home Assistant or other automation tools that can connect to an MCP server over HTTP.
 
-For internet-facing remote access (OAuth, TLS, multi-user) HTTP mode is **not** the right tool. Put a reverse proxy with TLS in front, or wait for that work to land separately.
+HTTP mode is designed for local and LAN use. Do not expose Home Memory's built-in HTTP listener directly to the internet. It is plain HTTP with optional Bearer authentication. For internet-facing access, terminate TLS at a reverse proxy and treat OAuth, multi-user isolation, and audit logs as out of scope for this mode.
 
-## Single-owner constraint
+## Database locking
 
-When `HOME_MEMORY_TRANSPORT=http` is set, this Home Memory process **owns the database file** for as long as it runs. Connection pooling is enabled by default to handle parallel requests well.
+In stdio mode, Home Memory opens the default embedded database for each tool call and releases it afterwards. That often leaves room for another local session or application between calls, but it is not coordinated multi-process access.
 
-That means you cannot run a stdio Home Memory and an HTTP Home Memory against the same `.scd` file at the same time — the second one will fail to open the database. Pick one transport per database file.
-
-If you also use the database from another tool (e.g. the original Smartconstruct desktop app), don't run the HTTP mode against it; use stdio instead, or use Firebird Server mode (advanced; ask in an issue if you need it).
+In HTTP mode with the default embedded database, Home Memory keeps the database file open **for as long as the server runs**. Do not use the same database file from another Home Memory process or another application while the HTTP server is running. If you need deliberate multi-process access, use Firebird Server mode.
 
 ## Configuration
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `HOME_MEMORY_TRANSPORT` | `stdio` | Set to `http` to enable HTTP mode |
-| `HOME_MEMORY_BIND` | `127.0.0.1` | IP to bind. Use `0.0.0.0` to expose on the LAN — see security note below |
+| `HOME_MEMORY_BIND` | `127.0.0.1` | IP to bind. Use `0.0.0.0` to expose on the LAN - see security note below |
 | `HOME_MEMORY_PORT` | `5100` | TCP port |
 | `HOME_MEMORY_API_KEY` | _(unset)_ | If set, requires `Authorization: Bearer <key>` on every request |
 
@@ -54,11 +52,11 @@ You should see:
 [HomeMemory] Note: HTTP mode - this process owns the database file
 ```
 
-The endpoint speaks **Streamable HTTP** (the MCP transport variant). Pointing a browser at it will return a 4xx — that's expected. Use a real MCP client.
+The endpoint speaks **Streamable HTTP** (the MCP transport variant). Pointing a browser at it will return a 4xx - that's expected; connect with an MCP client instead.
 
 ## Connecting Claude Desktop via `mcp-remote`
 
-Claude Desktop launches MCP servers via stdio commands. Use the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge to forward stdio to your local HTTP server. You need [Node.js](https://nodejs.org/) installed; no global `mcp-remote` install is needed — `npx -y` fetches it on demand.
+Claude Desktop launches MCP servers via stdio commands. Use the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge to forward stdio to your local HTTP server. You need [Node.js](https://nodejs.org/) installed; no global `mcp-remote` install is needed - `npx -y` fetches it on demand.
 
 Add to `claude_desktop_config.json`:
 
@@ -123,13 +121,13 @@ Without the header (or with the wrong key) the server returns `401 Unauthorized`
 
 ## Exposing on the LAN
 
-To accept connections from other machines on your LAN, set `HOME_MEMORY_BIND=0.0.0.0`. The server prints a startup warning if you do this without an API key — please set one. Anything reachable on your LAN should be authenticated.
+To accept connections from other machines on your LAN, set `HOME_MEMORY_BIND=0.0.0.0`. The server prints a startup warning if you do this without an API key - please set one. Anything reachable on your LAN should be authenticated.
 
-For internet-facing access, terminate TLS at a reverse proxy (Caddy, nginx, Traefik). Home Memory's HTTP listener is plain HTTP and intentionally has no TLS support — that's a separate, larger piece of work.
+For internet-facing access, terminate TLS at a reverse proxy (Caddy, nginx, Traefik). Home Memory's HTTP listener is plain HTTP and intentionally has no TLS support - that's a separate, larger piece of work.
 
 ## What's not in scope
 
-- TLS termination — use a reverse proxy.
-- OAuth 2.1 / dynamic client registration — out of scope for this transport.
-- Multi-user, audit logs, session isolation — out of scope.
-- Linux/macOS native binaries with HTTP — buildable from source, not yet packaged. A Linux/Docker image is on the roadmap, not part of HTTP mode itself.
+- TLS termination - use a reverse proxy.
+- OAuth 2.1 / dynamic client registration - out of scope for this transport.
+- Multi-user, audit logs, session isolation - out of scope.
+- Linux/macOS native binaries with HTTP - buildable from source, not yet packaged. A Linux/Docker image is on the roadmap, not part of HTTP mode itself.
