@@ -40,12 +40,24 @@ if (isHttp)
     var port = int.TryParse(portEnv, out var p) ? p : 5100;
     var apiKey = Environment.GetEnvironmentVariable("HOME_MEMORY_API_KEY");
 
+    var diagnostics = string.Equals(
+        Environment.GetEnvironmentVariable("HOME_MEMORY_HTTP_DIAGNOSTICS")?.Trim(),
+        "1", StringComparison.Ordinal);
+
     var builder = WebApplication.CreateBuilder(args);
     builder.Logging.ClearProviders();
+    if (diagnostics)
+    {
+        builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+        builder.Logging.SetMinimumLevel(LogLevel.Trace);
+    }
     builder.WebHost.UseUrls($"http://{bind}:{port}");
     McpServerSetup.AddHomeMcpServer(builder.Services, version).WithHttpTransport();
 
     var app = builder.Build();
+
+    if (diagnostics)
+        app.UseDeveloperExceptionPage();
 
     if (!string.IsNullOrEmpty(apiKey))
         McpServerSetup.UseBearerAuth(app, apiKey);
