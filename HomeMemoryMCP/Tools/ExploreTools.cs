@@ -6,18 +6,18 @@ using HomeMemory.MCP.Db;
 namespace HomeMemory.MCP.Tools;
 
 [McpServerToolType]
-public static class StructureTools
+public static class ExploreTools
 {
     [McpServerTool(Name = "get_structure_overview")]
     [Description(
         "Entry point: shows the building skeleton. " +
         "Elements are physical items (installed equipment, appliances, furniture, fixtures, tools, " +
         "structural components) organised in a location hierarchy (building → floor → room → wall → item). " +
-        "Default (structuralAreasOnly=true): only structural area elements – i.e. elements whose category is marked " +
-        "as structural area category (building, floor, room, outdoor area, etc.). " +
-        "Structural area elements are navigable containers, not devices or components. " +
-        "Returns ~60 elements, ideal as a first overview or to find the right path for " +
-        "subsequent find_element/list_elements calls. " +
+        "Default (structuralAreasOnly=true): returns the location hierarchy – buildings, floors, rooms, outdoor areas, garages, " +
+        "and other navigable containers. " +
+        "Use as the first overview to understand the layout of the home and identify the right element path " +
+        "for follow-up calls (find_element, list_elements, get_element_details). " +
+        "This is the map, not the inventory. " +
         "With structuralAreasOnly=false and 'under': preferred way to browse all content of a specific area " +
         "(e.g. 'What is in the basement?') – no result limit, full hierarchical tree, " +
         "more efficient than multiple find_element calls. " +
