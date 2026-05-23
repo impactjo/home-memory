@@ -20,7 +20,8 @@ public static class StatusTools
 
     [McpServerTool(Name = "list_statuses")]
     [Description(
-        "Lists all available statuses with element counts, grouped by status type. " +
+        "Lists all available statuses with reference counts, grouped by status type. " +
+        "Counts are shown separately for elements, connections, part types, and other records (when non-zero). " +
         "Status types: Existing (0), Planned (1), Removed (2). " +
         "Use status names from this list in create_element, update_element, and find_element. " +
         "create_element and update_element require the exact status name (case-insensitive). " +
@@ -34,10 +35,15 @@ public static class StatusTools
 
             var rows = FirebirdDb.ExecuteQuery(conn, """
                 SELECT s."Oid", s."Name", s."StatusType", s."Note",
-                       COUNT(e."Oid") AS ELEM_COUNT
+                       COUNT(e."Oid")  AS ELEM_COUNT,
+                       COUNT(cn."Oid") AS CONN_COUNT,
+                       COUNT(pt."Oid") AS PT_COUNT,
+                       COUNT(ce."Oid") AS CE_COUNT
                 FROM "Status" s
-                LEFT JOIN "CEntity" ce ON ce."Status" = s."Oid"
-                LEFT JOIN "Element"  e  ON e."Oid"    = ce."Oid"
+                LEFT JOIN "CEntity"    ce ON ce."Status" = s."Oid"
+                LEFT JOIN "Element"    e  ON e."Oid"     = ce."Oid"
+                LEFT JOIN "Connection" cn ON cn."Oid"    = ce."Oid"
+                LEFT JOIN "PartType"   pt ON pt."Oid"    = ce."Oid"
                 GROUP BY s."Oid", s."Name", s."StatusType", s."Note"
                 ORDER BY s."StatusType", s."Name"
                 """);
@@ -57,11 +63,20 @@ public static class StatusTools
                     currentType = sType;
                 }
 
-                var name      = row.Str("Name");
-                var note      = row.Str("Note");
-                var elemCount = Convert.ToInt64(row.GetValueOrDefault("ELEM_COUNT") ?? 0L);
+                var name       = row.Str("Name");
+                var note       = row.Str("Note");
+                var elemCount  = Convert.ToInt64(row.GetValueOrDefault("ELEM_COUNT") ?? 0L);
+                var connCount  = Convert.ToInt64(row.GetValueOrDefault("CONN_COUNT") ?? 0L);
+                var ptCount    = Convert.ToInt64(row.GetValueOrDefault("PT_COUNT")   ?? 0L);
+                var ceCount    = Convert.ToInt64(row.GetValueOrDefault("CE_COUNT")   ?? 0L);
+                var otherCount = ceCount - elemCount - connCount - ptCount;
 
-                var detail = elemCount > 0 ? $"  ({elemCount} elem.)" : "";
+                var parts = new List<string>();
+                if (elemCount  > 0) parts.Add($"{elemCount} elem.");
+                if (connCount  > 0) parts.Add($"{connCount} conn.");
+                if (ptCount    > 0) parts.Add($"{ptCount} part type{(ptCount == 1 ? "" : "s")}");
+                if (otherCount > 0) parts.Add($"{otherCount} other");
+                var detail  = parts.Count > 0 ? $"  ({string.Join(" / ", parts)})" : "";
                 var noteStr = !string.IsNullOrEmpty(note) ? $"  – {note}" : "";
                 lines.Add($"    - {name}{detail}{noteStr}");
             }
@@ -288,8 +303,8 @@ public static class StatusTools
     [Description(
         "Permanently deletes a status value. " +
         "Required: name (current status name, case-insensitive). " +
-        "Blocked if any element references this status – reassign or remove their status first " +
-        "(call find_element with that status name to locate them). " +
+        "Blocked if any record (element, connection, part type, or other) references this status – " +
+        "reassign or remove the status on those records first. " +
         "If the status name is not known, call list_statuses first. " +
         "Note: the three default statuses (Existing, Planned, Removed) should rarely be deleted.")]
     public static string DeleteStatus(
@@ -309,13 +324,43 @@ public static class StatusTools
 
             var oid = findRows[0].Str("Oid");
 
-            // Blocking check: CEntity references
-            var usageRows  = FirebirdDb.ExecuteQuery(conn,
-                """SELECT COUNT(*) AS CNT FROM "CEntity" WHERE "Status" = ?""", oid);
-            var usageCount = FirebirdDb.CountResult(usageRows);
-            if (usageCount > 0)
-                return $"Error: status '{name}' is assigned to {usageCount} element{(usageCount == 1 ? "" : "s")}. " +
-                       $"Reassign or remove their status first (call find_element with status='{name}' to locate them).";
+            // Blocking check: CEntity references, split by subclass
+            var usageRows  = FirebirdDb.ExecuteQuery(conn, """
+                SELECT
+                    COUNT(e."Oid")  AS ELEM_COUNT,
+                    COUNT(cn."Oid") AS CONN_COUNT,
+                    COUNT(pt."Oid") AS PT_COUNT,
+                    COUNT(ce."Oid") AS CE_COUNT
+                FROM "CEntity" ce
+                LEFT JOIN "Element"    e  ON e."Oid"  = ce."Oid"
+                LEFT JOIN "Connection" cn ON cn."Oid" = ce."Oid"
+                LEFT JOIN "PartType"   pt ON pt."Oid" = ce."Oid"
+                WHERE ce."Status" = ?
+                """, oid);
+            var elemCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("ELEM_COUNT") ?? 0L);
+            var connCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("CONN_COUNT") ?? 0L);
+            var ptCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("PT_COUNT")   ?? 0L);
+            var ceCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("CE_COUNT")   ?? 0L);
+            var otherCount = ceCount - elemCount - connCount - ptCount;
+
+            if (ceCount > 0)
+            {
+                var parts = new List<string>();
+                if (elemCount  > 0) parts.Add($"{elemCount} element{(elemCount == 1 ? "" : "s")}");
+                if (connCount  > 0) parts.Add($"{connCount} connection{(connCount == 1 ? "" : "s")}");
+                if (ptCount    > 0) parts.Add($"{ptCount} part type{(ptCount == 1 ? "" : "s")}");
+                if (otherCount > 0) parts.Add($"{otherCount} other record{(otherCount == 1 ? "" : "s")}");
+                var breakdown = string.Join(", ", parts);
+
+                var hints = new List<string>();
+                if (elemCount  > 0) hints.Add($"call find_element with status='{name}' to locate the elements");
+                if (connCount  > 0) hints.Add("connection status is not yet searchable or editable via MCP");
+                if (ptCount    > 0) hints.Add("part type status is not currently manageable via MCP");
+                if (otherCount > 0) hints.Add("other referenced records are not currently manageable via MCP");
+
+                return $"Error: status '{name}' is assigned to {ceCount} record{(ceCount == 1 ? "" : "s")} ({breakdown}). " +
+                       string.Join("; ", hints) + ".";
+            }
 
             using var txn = conn.BeginTransaction();
             try

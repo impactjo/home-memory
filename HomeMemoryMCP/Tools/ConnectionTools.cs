@@ -203,7 +203,7 @@ public static class ConnectionTools
         "Full details of a single connection: category, source, destination, route, length, " +
         "purpose, note, and description. " +
         "Identify by name, optionally narrowed by source or destination when multiple connections share the same name. " +
-        "Use before update_connection when you need to read and extend existing text fields.")]
+        "update_connection requires calling this first before modifying description, note, or purpose.")]
     public static string GetConnectionDetails(
         [Description("Connection name to look up")] string name,
         [Description("Full path of the source element – narrows search if name is ambiguous (optional)")] string? source = null,
@@ -327,7 +327,7 @@ public static class ConnectionTools
         "Forbidden characters in name: *|<>?\" and tab.")]
     public static string CreateConnection(
         [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting circuit' or 'Cold water supply bathroom'")] string name,
-        [Description("Object category: name or short name, e.g. 'Electrical Cable', 'Pipe'. Required!")] string category,
+        [Description("Object category: name, short name, or full path (e.g. 'Electrical Cable', 'Pipe', or 'Electrical/Cable' when the name is ambiguous). Required!")] string category,
         [Description("Full path of the source element (where the line originates), e.g. 'House/GF/Distribution/Circuit-L1'")] string source,
         [Description("Full path of the destination element (where the line ends), e.g. 'House/GF/Living/Ceiling-Light'")] string destination,
         [Description("Route / physical path description, e.g. 'along north wall, through ceiling void' (optional)")] string? route = null,
@@ -437,7 +437,7 @@ public static class ConnectionTools
         [Description("Full path of the current source element – narrows search if name is ambiguous (optional)")] string? source = null,
         [Description("Full path of the current destination element – narrows search if name is ambiguous (optional)")] string? destination = null,
         [Description("New name (optional). Forbidden characters: *|<>?\" and tab.")] string? new_name = null,
-        [Description("New category: name or short name (cannot be cleared – required field)")] string? category = null,
+        [Description("New category: name, short name, or full path (e.g. 'Electrical/Cable' when the name is ambiguous). Cannot be cleared – required field.")] string? category = null,
         [Description("New source element: full path (optional)")] string? new_source = null,
         [Description("New destination element: full path (optional)")] string? new_destination = null,
         [Description("New route description ('CLEAR' to remove)")] string? route = null,
@@ -663,7 +663,8 @@ public static class ConnectionTools
     [McpServerTool(Name = "delete_connection")]
     [Description(
         "Deletes a connection. Search is by name, optionally narrowed by source or destination " +
-        "(use when multiple connections share the same name).")]
+        "(use when multiple connections share the same name). " +
+        "Blocked if documents are attached – detach them first.")]
     public static string DeleteConnection(
         [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting'")] string name,
         [Description("Full path of the source element to narrow the search (optional)")] string? source = null,
@@ -716,6 +717,9 @@ public static class ConnectionTools
             var docError = QueryHelpers.CheckDocumentsAttached(conn, oid);
             if (docError != null) return docError.Replace("element", "connection");
 
+            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, oid)
+                .Select(a => a.Replace("element", "connection")).ToList();
+
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Connection"     WHERE "Oid"   = ?""", oid);
@@ -726,7 +730,10 @@ public static class ConnectionTools
                 catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569) { /* table absent – skip */ }
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", oid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", oid);
-                return $"✓ Connection '{name}' deleted.";
+                var result = $"✓ Connection '{name}' deleted.";
+                if (advisories.Count > 0)
+                    result += $"\n  Advisory: {string.Join("; ", advisories)}.";
+                return result;
             });
         }
         catch (Exception ex)

@@ -198,7 +198,7 @@ public static class ElementTools
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab.")]
     public static string CreateElement(
         [Description("Element name, e.g. 'Socket left', 'Boiler', 'Sofa'")] string name,
-        [Description("Object category: name or short name, e.g. 'Electrical', 'Heating', 'Furniture'. Required!")] string category,
+        [Description("Object category: name, short name, or full path (e.g. 'Electrical', 'Heating', 'Furniture', or 'Electrical/Cable' when the name is ambiguous). Required!")] string category,
         [Description("Full path of the parent element, e.g. 'House/GF/Kitchen/South-Wall'. Empty = top-level.")] string? parent = null,
         [Description("Short name (optional), e.g. 'W-SW' for 'West-Southwest Wall'")] string? short_name = null,
         [Description("Status name (optional). Most elements need no status – omit for normal existing items. Only set when the user explicitly mentions a status like 'planned' or 'removed'. Call list_statuses for options.")] string? status = null,
@@ -333,7 +333,7 @@ public static class ElementTools
         [Description("Full name of the element, e.g. 'House/GF/Kitchen/South-Wall/Socket'")] string fullname,
         [Description("New name (optional). Changes the full name!")] string? name = null,
         [Description("New short name (optional, 'CLEAR' to remove). Changes the full name!")] string? short_name = null,
-        [Description("New category: name or short name (cannot be cleared – required field)")] string? category = null,
+        [Description("New category: name, short name, or full path (e.g. 'Electrical/Cable' when the name is ambiguous). Cannot be cleared – required field.")] string? category = null,
         [Description("New status name (optional). Set only when user explicitly mentions a status (e.g. 'Planned', 'Removed'). 'CLEAR' removes a previously set status. Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not already self-evident from the name ('CLEAR' to remove)")] string? purpose = null,
         [Description("Temporary note or to-do – use during planning/construction for things to address later. Not for permanent records ('CLEAR' to remove)")] string? note = null,

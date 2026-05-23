@@ -18,11 +18,14 @@ public static class CategoryTools
                    ct.CAT_DEPTH, ct."IsAreaCategory",
                    COUNT(e."Oid")    AS ELEM_COUNT,
                    COUNT(conn."Oid") AS CONN_COUNT,
+                   COUNT(pt."Oid")   AS PT_COUNT,
+                   COUNT(ci."Oid")   AS CI_COUNT,
                    ce."Description"
             FROM CAT_TREE ct
             LEFT JOIN "CItem"      ci   ON ci."Category" = ct."Oid"
             LEFT JOIN "Element"    e    ON e."Oid"    = ci."Oid"
             LEFT JOIN "Connection" conn ON conn."Oid" = ci."Oid"
+            LEFT JOIN "PartType"   pt   ON pt."Oid"  = ci."Oid"
             LEFT JOIN "CEntity"    ce   ON ce."Oid"  = ct."Oid"
             GROUP BY ct."Oid", ct.CAT_FULLNAME, ct."Name", ct."ShortName",
                      ct.CAT_DEPTH, ct."IsAreaCategory", ce."Description"
@@ -35,7 +38,7 @@ public static class CategoryTools
 
     [McpServerTool(Name = "list_categories")]
     [Description(
-        "Lists all object categories with element/connection counts. " +
+        "Lists all object categories with item counts (elements, connections, part types, and other items, shown when non-zero). " +
         "Categories classify both elements (physical items: equipment, furniture, fixtures) " +
         "and connections (physical lines: pipes, cables, ducts). " +
         "IMPORTANT: Call this before create_element or create_connection to pick the right category. " +
@@ -62,11 +65,16 @@ public static class CategoryTools
                 var sn     = r.Str("ShortName");
                 var label  = !string.IsNullOrEmpty(sn) && sn != name ? $"{name} ({sn})" : name;
                 bool isStructuralArea = FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"));
-                long e = Convert.ToInt64(r.GetValueOrDefault("ELEM_COUNT") ?? 0L);
-                long c = Convert.ToInt64(r.GetValueOrDefault("CONN_COUNT") ?? 0L);
+                long e  = Convert.ToInt64(r.GetValueOrDefault("ELEM_COUNT") ?? 0L);
+                long c  = Convert.ToInt64(r.GetValueOrDefault("CONN_COUNT") ?? 0L);
+                long pt = Convert.ToInt64(r.GetValueOrDefault("PT_COUNT")   ?? 0L);
+                long ci = Convert.ToInt64(r.GetValueOrDefault("CI_COUNT")   ?? 0L);
+                long ot = ci - e - c - pt;
                 var parts = new List<string>();
-                if (e > 0) parts.Add($"{e} elem.");
-                if (c > 0) parts.Add($"{c} conn.");
+                if (e  > 0) parts.Add($"{e} elem.");
+                if (c  > 0) parts.Add($"{c} conn.");
+                if (pt > 0) parts.Add($"{pt} part type{(pt == 1 ? "" : "s")}");
+                if (ot > 0) parts.Add($"{ot} other");
                 var countStr = parts.Count > 0 ? $"  ({string.Join(", ", parts)})" : "";
                 var descFlag = !string.IsNullOrEmpty(r.Str("Description")) ? "  [i]" : "";
                 var areaFlag = isStructuralArea ? "  [structural area]" : "";
@@ -421,12 +429,12 @@ public static class CategoryTools
 
     [McpServerTool(Name = "create_category")]
     [Description(
-        "Creates a new object category. Use this when no suitable category exists for a new element. " +
+        "Creates a new object category. Use this when no suitable category exists for a new element or connection. " +
         "Required: name. Optional: parent (full category path, e.g. 'Electrical'), " +
         "short_name, description, is_structural_area (default false – structural area categories are " +
         "navigable building containers like Room/Floor, not trades or surface zones). " +
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab. " +
-        "After creating, pass the new category name to create_element or create_connection.")]
+        "After creating, use the returned category path in create_element or create_connection.")]
     public static string CreateCategory(
         [Description("Category name, e.g. 'Pool Technology' or 'Solar'")] string name,
         [Description("Full path of the parent category, e.g. 'Heating' or 'Electrical/Low-Voltage'. Empty = top-level.")] string? parent = null,
@@ -590,16 +598,44 @@ public static class CategoryTools
                 return $"Error: category '{category}' has {childCount} child categor{(childCount == 1 ? "y" : "ies")}. " +
                        "Delete or move child categories first.";
 
-            // Blocking check 2: CItem references (elements, connections, and part types)
-            var usageRows  = FirebirdDb.ExecuteQuery(conn,
-                """SELECT COUNT(*) AS CNT FROM "CItem" WHERE "Category" = ?""", oid);
-            var usageCount = FirebirdDb.CountResult(usageRows);
-            if (usageCount > 0)
-                return $"Error: category '{category}' is used by {usageCount} item{(usageCount == 1 ? "" : "s")} " +
-                       "(elements, connections, or part types). Reassign or delete them first. " +
-                       $"To find references: call get_by_category('{category}') for elements; " +
-                       "use get_connections for connections; " +
-                       "part type references cannot be discovered via MCP tools directly.";
+            // Blocking check 2: CItem references, split by subclass (Element/Connection/PartType + other)
+            var usageRows = FirebirdDb.ExecuteQuery(conn, """
+                SELECT
+                    COUNT(e."Oid")  AS ELEM_COUNT,
+                    COUNT(cn."Oid") AS CONN_COUNT,
+                    COUNT(pt."Oid") AS PT_COUNT,
+                    COUNT(ci."Oid") AS CI_COUNT
+                FROM "CItem" ci
+                LEFT JOIN "Element"    e  ON e."Oid"  = ci."Oid"
+                LEFT JOIN "Connection" cn ON cn."Oid" = ci."Oid"
+                LEFT JOIN "PartType"   pt ON pt."Oid" = ci."Oid"
+                WHERE ci."Category" = ?
+                """, oid);
+            var elemCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("ELEM_COUNT") ?? 0L);
+            var connCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("CONN_COUNT") ?? 0L);
+            var ptCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("PT_COUNT")   ?? 0L);
+            var ciCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("CI_COUNT")   ?? 0L);
+            var otherCount = ciCount - elemCount - connCount - ptCount;
+
+            if (ciCount > 0)
+            {
+                var parts = new List<string>();
+                if (elemCount  > 0) parts.Add($"{elemCount} element{(elemCount == 1 ? "" : "s")}");
+                if (connCount  > 0) parts.Add($"{connCount} connection{(connCount == 1 ? "" : "s")}");
+                if (ptCount    > 0) parts.Add($"{ptCount} part type{(ptCount == 1 ? "" : "s")}");
+                if (otherCount > 0) parts.Add($"{otherCount} other item{(otherCount == 1 ? "" : "s")}");
+                var breakdown = string.Join(", ", parts);
+
+                var hints = new List<string>();
+                if (elemCount  > 0) hints.Add($"call get_by_category('{category}') to locate the elements");
+                if (connCount  > 0) hints.Add($"call get_connections(category='{category}') to locate the connections");
+                if (ptCount    > 0) hints.Add("part type references cannot be discovered via MCP tools directly");
+                if (otherCount > 0) hints.Add("other referenced items are not currently manageable via MCP");
+
+                return $"Error: category '{category}' is used by {ciCount} item{(ciCount == 1 ? "" : "s")} ({breakdown}). " +
+                       "Reassign or delete them first. " +
+                       string.Join("; ", hints) + ".";
+            }
 
             using var txn = conn.BeginTransaction();
             try
