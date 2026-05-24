@@ -324,6 +324,7 @@ public static class ConnectionTools
         "(e.g. circuit breaker → socket, boiler → radiator, main pipe → tap). " +
         "Optional: route (text description of the physical path), length (in meters), " +
         "purpose, note, description. " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
         "Forbidden characters in name: *|<>?\" and tab.")]
     public static string CreateConnection(
         [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting circuit' or 'Cold water supply bathroom'")] string name,
@@ -333,8 +334,8 @@ public static class ConnectionTools
         [Description("Route / physical path description, e.g. 'along north wall, through ceiling void' (optional)")] string? route = null,
         [Description("Length in meters (optional), e.g. 4.5")] decimal? length = null,
         [Description("Intended use, when not self-evident from the name (optional). Only fill with information the user explicitly provided.")] string? purpose = null,
-        [Description("Temporary note or to-do during planning/construction – not for permanent records (optional). Only fill with information the user explicitly provided.")] string? note = null,
-        [Description("Permanent technical information: material, specifications, installation details (optional). Only fill with information the user explicitly provided — do not generate or infer.")] string? description = null)
+        [Description("Short temporary to-do during planning/construction (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
+        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details (optional). Only fill with information the user explicitly provided — do not generate or infer.")] string? description = null)
     {
         name        = Validate.NormalizeSingleline(name)?.Trim() ?? "";
         category    = category?.Trim()    ?? "";
@@ -356,7 +357,7 @@ public static class ConnectionTools
         var lenErr = Validate.Length(name, "name", 150)
                   ?? Validate.Length(route?.Trim(), "route", 1000)
                   ?? Validate.Length(purpose?.Trim(), "purpose", 200)
-                  ?? Validate.Length(note?.Trim(), "note", 200)
+                  ?? Validate.Length(note?.Trim(), "note", 200, "For permanent or longer information, use description instead.")
                   ?? Validate.Length(description?.Trim(), "description", 4000);
         if (lenErr != null) return lenErr;
 
@@ -431,7 +432,8 @@ public static class ConnectionTools
         "(required when multiple connections share the same name). " +
         "Pass 'CLEAR' to empty route, length, purpose, note, or description. " +
         "IMPORTANT: ALWAYS call get_connection_details before updating description, note, or purpose. " +
-        "If the field already has content, inform the user and ask whether to replace or extend.")]
+        "If the field already has content, inform the user and ask whether to replace or extend. " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content).")]
     public static string UpdateConnection(
         [Description("Current name of the connection to update")] string name,
         [Description("Full path of the current source element – narrows search if name is ambiguous (optional)")] string? source = null,
@@ -443,8 +445,8 @@ public static class ConnectionTools
         [Description("New route description ('CLEAR' to remove)")] string? route = null,
         [Description("New length in meters ('CLEAR' to remove), e.g. 4.5")] string? length = null,
         [Description("Intended use, when not self-evident from the name ('CLEAR' to remove)")] string? purpose = null,
-        [Description("Temporary note or to-do during planning/construction – not for permanent records ('CLEAR' to remove)")] string? note = null,
-        [Description("Permanent technical information: material, specifications, installation details ('CLEAR' to remove)")] string? description = null)
+        [Description("Short temporary to-do during planning/construction. For permanent technical info use description instead ('CLEAR' to remove)")] string? note = null,
+        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details ('CLEAR' to remove)")] string? description = null)
     {
         name = name?.Trim() ?? "";
         if (string.IsNullOrEmpty(name))
@@ -476,7 +478,7 @@ public static class ConnectionTools
         var lenErr = Validate.Length(new_name, "new_name", 150)
                   ?? Validate.Length(route is not null and not "CLEAR" ? route.Trim() : null, "route", 1000)
                   ?? Validate.Length(purpose is not null and not "CLEAR" ? purpose.Trim() : null, "purpose", 200)
-                  ?? Validate.Length(note is not null and not "CLEAR" ? note.Trim() : null, "note", 200)
+                  ?? Validate.Length(note is not null and not "CLEAR" ? note.Trim() : null, "note", 200, "For permanent or longer information, use description instead.")
                   ?? Validate.Length(description is not null and not "CLEAR" ? description.Trim() : null, "description", 4000);
         if (lenErr != null) return lenErr;
 

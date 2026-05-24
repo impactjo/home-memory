@@ -18,11 +18,16 @@ internal static class Validate
 
     /// <summary>
     /// Returns an error message if <paramref name="value"/> exceeds <paramref name="maxLen"/> characters, otherwise null.
+    /// Optional <paramref name="hint"/> is appended to the message (e.g. routing advice to another field).
     /// </summary>
-    public static string? Length(string? value, string fieldName, int maxLen)
+    public static string? Length(string? value, string fieldName, int maxLen, string? hint = null)
     {
         if (value != null && value.Length > maxLen)
-            return $"Error: '{fieldName}' exceeds maximum length of {maxLen} characters (got {value.Length}).";
+        {
+            var msg = $"Error: '{fieldName}' exceeds maximum length of {maxLen} characters (got {value.Length}).";
+            if (!string.IsNullOrEmpty(hint)) msg += " " + hint;
+            return msg;
+        }
         return null;
     }
 

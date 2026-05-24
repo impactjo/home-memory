@@ -193,20 +193,22 @@ public static class ElementTools
         "If no suitable category exists, call create_category first, then use the new category here. " +
         "IMPORTANT – parent path: if the parent element's full path is not known exactly, " +
         "call get_structure_overview or find_element first to find the correct path. Do not guess paths. " +
+        "Use the parent path for location; do not repeat parent context in the element name. " +
         "Optional: parent (full path of the parent element), " +
         "short_name, status, purpose, note, description, user_manual, position. " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab.")]
     public static string CreateElement(
-        [Description("Element name, e.g. 'Socket left', 'Boiler', 'Sofa'")] string name,
+        [Description("Concise name for the element, typically the object/function type, e.g. 'Socket left', 'Boiler', 'Sofa'. Brand, model, dimensions, and purchase details usually do not belong in the name; put them in description when no other field already covers them. Keep brand/model in the name only when they are the common identifier, e.g. 'Hue Bridge'. Keep a short sibling differentiator such as 'left'/'right' or a number when siblings would otherwise be ambiguous.")] string name,
         [Description("Object category: name, short name, or full path (e.g. 'Electrical', 'Heating', 'Furniture', or 'Electrical/Cable' when the name is ambiguous). Required!")] string category,
         [Description("Full path of the parent element, e.g. 'House/GF/Kitchen/South-Wall'. Empty = top-level.")] string? parent = null,
-        [Description("Short name (optional), e.g. 'W-SW' for 'West-Southwest Wall'")] string? short_name = null,
+        [Description("Optional concise path segment, mainly for structural containers (e.g. 'W-SW' for 'West-Southwest Wall'). Must be unique among siblings; omit when it would be the same as name.")] string? short_name = null,
         [Description("Status name (optional). Most elements need no status – omit for normal existing items. Only set when the user explicitly mentions a status like 'planned' or 'removed'. Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not self-evident from the name (optional). Only fill with information the user explicitly provided.")] string? purpose = null,
-        [Description("Temporary note or to-do during planning/construction – not for permanent records (optional). Only fill with information the user explicitly provided.")] string? note = null,
-        [Description("Permanent technical information for professionals: installation specifics, maintenance history, test results, purchase info — anything not already covered by other fields (optional). Only fill with information the user explicitly provided — do not generate or infer.")] string? description = null,
+        [Description("Short temporary to-do during planning/construction (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
+        [Description("Permanent technical information for professionals (default for longer-lived info): installation specifics, maintenance history, test results, brand, model, dimensions, purchase info — anything not already covered by other fields (optional). Only fill with information the user explicitly provided — do not generate or infer.")] string? description = null,
         [Description("User-facing information: operating instructions, feature overview, maintenance schedule (what/when/how), troubleshooting tips (optional). Only fill with information the user explicitly provided.")] string? user_manual = null,
-        [Description("Position within the element (optional)")] string? position = null)
+        [Description("Fine-grained location within the parent, such as 'under sink' or '136 cm from left' (optional). Use this instead of putting precise positional details into the name. Only fill with information the user explicitly provided.")] string? position = null)
     {
         name = Validate.NormalizeSingleline(name)?.Trim() ?? "";
         if (string.IsNullOrEmpty(name))
@@ -227,7 +229,7 @@ public static class ElementTools
         var lenErr = Validate.Length(name, "name", 100)
                   ?? Validate.Length(short_name, "short_name", 50)
                   ?? Validate.Length(purpose?.Trim(), "purpose", 200)
-                  ?? Validate.Length(note?.Trim(), "note", 200)
+                  ?? Validate.Length(note?.Trim(), "note", 200, "For permanent or longer information, use description instead.")
                   ?? Validate.Length(description?.Trim(), "description", 4000)
                   ?? Validate.Length(user_manual?.Trim(), "user_manual", 4000)
                   ?? Validate.Length(position?.Trim(), "position", 200);
@@ -326,20 +328,22 @@ public static class ElementTools
         "Pass 'CLEAR' to empty an optional field (status, purpose, note, description, user_manual, position, short_name). " +
         "When changing category: call list_categories first. When changing status: call list_statuses first. " +
         "CAUTION: changing 'name' or 'short_name' changes the full path of this element and all its descendants. " +
+        "Use the parent path for location; do not repeat parent context in the element name. " +
         "IMPORTANT: ALWAYS call get_element_details before updating purpose, description, note, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab.")]
     public static string UpdateElement(
         [Description("Full name of the element, e.g. 'House/GF/Kitchen/South-Wall/Socket'")] string fullname,
-        [Description("New name (optional). Changes the full name!")] string? name = null,
-        [Description("New short name (optional, 'CLEAR' to remove). Changes the full name!")] string? short_name = null,
+        [Description("New name (optional). Changes the full path! Concise name for the element, typically the object/function type. Brand, model, dimensions, and purchase details usually do not belong in the name; put them in description when no other field already covers them. Keep brand/model in the name only when they are the common identifier, e.g. 'Hue Bridge'. Keep a short sibling differentiator such as 'left'/'right' or a number when siblings would otherwise be ambiguous.")] string? name = null,
+        [Description("New short name (optional, 'CLEAR' to remove). Changes the full path! Optional concise path segment, mainly for structural containers. Must be unique among siblings; omit when it would be the same as name.")] string? short_name = null,
         [Description("New category: name, short name, or full path (e.g. 'Electrical/Cable' when the name is ambiguous). Cannot be cleared – required field.")] string? category = null,
         [Description("New status name (optional). Set only when user explicitly mentions a status (e.g. 'Planned', 'Removed'). 'CLEAR' removes a previously set status. Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not already self-evident from the name ('CLEAR' to remove)")] string? purpose = null,
-        [Description("Temporary note or to-do – use during planning/construction for things to address later. Not for permanent records ('CLEAR' to remove)")] string? note = null,
-        [Description("Permanent technical information for professionals: installation specifics, maintenance history, test results, purchase info — anything not already covered by other fields ('CLEAR' to remove)")] string? description = null,
+        [Description("Short temporary to-do during planning/construction. For permanent technical info use description instead ('CLEAR' to remove)")] string? note = null,
+        [Description("Permanent technical information for professionals (default for longer-lived info): installation specifics, maintenance history, test results, brand, model, dimensions, purchase info — anything not already covered by other fields ('CLEAR' to remove)")] string? description = null,
         [Description("User-facing information: operating instructions, feature overview, maintenance schedule (what/when/how), troubleshooting tips ('CLEAR' to remove)")] string? user_manual = null,
-        [Description("Position ('CLEAR' to remove)")] string? position = null)
+        [Description("Fine-grained location within the parent, such as 'under sink' or '136 cm from left' ('CLEAR' to remove). Use this instead of putting precise positional details into the name. Only fill with information the user explicitly provided.")] string? position = null)
     {
         fullname = fullname?.Trim() ?? "";
         if (string.IsNullOrEmpty(fullname))
@@ -391,7 +395,7 @@ public static class ElementTools
             var lenErr = Validate.Length(name, "name", 100)
                       ?? Validate.Length(short_name != "CLEAR" ? short_name : null, "short_name", 50)
                       ?? Validate.Length(purpose     is not null and not "CLEAR" ? purpose.Trim()     : null, "purpose", 200)
-                      ?? Validate.Length(note        is not null and not "CLEAR" ? note.Trim()        : null, "note", 200)
+                      ?? Validate.Length(note        is not null and not "CLEAR" ? note.Trim()        : null, "note", 200, "For permanent or longer information, use description instead.")
                       ?? Validate.Length(description is not null and not "CLEAR" ? description.Trim() : null, "description", 4000)
                       ?? Validate.Length(user_manual is not null and not "CLEAR" ? user_manual.Trim() : null, "user_manual", 4000)
                       ?? Validate.Length(position    is not null and not "CLEAR" ? position.Trim()    : null, "position", 200);
