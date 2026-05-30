@@ -272,7 +272,7 @@ public static class ExploreTools
                 LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
                 LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
                 WHERE {where}
-                ORDER BY et.FULLNAME
+                ORDER BY et.SORTPATH, et.FULLNAME
                 """;
             var allRows = FirebirdDb.ExecuteQuery(conn, sql, paramList.ToArray());
             var rows = catOids is not null
