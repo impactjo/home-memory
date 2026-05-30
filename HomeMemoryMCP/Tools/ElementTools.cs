@@ -13,7 +13,7 @@ public static class ElementTools
     [McpServerTool(Name = "get_element_details")]
     [Description(
         "Full details of a single element: properties (category, status, part type, " +
-        "purpose, description, user manual), direct child elements, " +
+        "purpose, note, description, user manual), direct child elements, " +
         "and all incoming and outgoing connections (physical lines: pipes, cables, ducts). " +
         "Use when the exact path is known and you need details or connections. " +
         "An element is any physical item in the building: installed equipment, appliance, " +

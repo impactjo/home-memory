@@ -22,23 +22,28 @@ public static class ConnectionTools
         "results show the category of each match, which you can then pass as the category parameter. " +
         "searchTerm filters by connection name (partial, case-insensitive) – " +
         "use this to find connections by keyword, e.g. searchTerm='conduit' or searchTerm='leerrohr'. " +
-        "With searchAllFields=true, searchTerm also matches Route, Purpose, Note, and Description – " +
+        "With searchAllFields=true, searchTerm also matches Route, Purpose, Note, Description, and UserManual – " +
         "useful when a keyword appears in a field other than the connection name. " +
-        "Returns up to 100 connections; refine with category, under, or searchTerm for complete results. " +
+        "With status: filter by status type name (Existing / Planned / Removed – language-independent) " +
+        "or by status name (exact match first, partial match as fallback). " +
+        "Returns up to 100 connections; refine with category, under, searchTerm, or status for complete results. " +
+        "Connections with status Planned or Removed are marked with their status name. " +
         "Note: conduit/cable endpoints may also be documented as elements – " +
         "combine with find_element(searchTerm) for a complete picture.")]
     public static string GetConnections(
         [Description("Connection category: exact name or short name (e.g. 'Cable'), full path with '/' (e.g. 'Electrical/Cable'). Partial match as fallback; if ambiguous, an error lists full paths. Includes all subcategories.")] string category = "",
         [Description("Spatial filter: connections whose source or destination is under this path.")] string under = "",
         [Description("Filter by connection name (partial match, case-insensitive), e.g. 'conduit' or 'leerrohr'.")] string searchTerm = "",
-        [Description("Also search in Route, Purpose, Note, and Description. Default: false (name only).")] bool? searchAllFields = null)
+        [Description("Also search in Route, Purpose, Note, Description, and UserManual. Default: false (name only).")] bool? searchAllFields = null,
+        [Description("Filter by status type name (Existing / Planned / Removed) or status name. Call list_statuses for options.")] string status = "")
     {
         category   = category.Trim();
         under      = under.Trim().TrimEnd('/');
         searchTerm = searchTerm.Trim();
+        status     = status.Trim();
 
-        if (string.IsNullOrEmpty(category) && string.IsNullOrEmpty(under) && string.IsNullOrEmpty(searchTerm))
-            return "Error: provide at least one of category, searchTerm, or under.";
+        if (string.IsNullOrEmpty(category) && string.IsNullOrEmpty(under) && string.IsNullOrEmpty(searchTerm) && string.IsNullOrEmpty(status))
+            return "Error: provide at least one of category, searchTerm, under, or status.";
 
         try
         {
@@ -62,18 +67,18 @@ public static class ConnectionTools
             }
 
             var detailsSelect = searchAllFields == true
-                ? """, ce."Purpose", ce."Note", ce."Description" """
-                : "";
-            var ceJoin = searchAllFields == true
-                ? """LEFT JOIN "CEntity" ce ON ce."Oid" = c."Oid" """
+                ? """, ce."Purpose", ce."Note", ce."Description", ce."UserManual" """
                 : "";
             var sql = new StringBuilder($"""
                 SELECT c."Name", c."Source", c."Destination", c."Route", c."Length",
-                       cat."Name" AS CATNAME, ci."Category" AS CAT_OID{detailsSelect}
+                       cat."Name" AS CATNAME, ci."Category" AS CAT_OID,
+                       s."Name" AS STATUSNAME, s."StatusType" AS STATUSTYPE{detailsSelect}
                 FROM "Connection" c
                 JOIN "CItem"    ci  ON ci."Oid"  = c."Oid"
                 JOIN "Category" cat ON cat."Oid" = ci."Category"
-                {ceJoin}WHERE 1=1
+                LEFT JOIN "CEntity" ce ON ce."Oid" = c."Oid"
+                LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
+                WHERE 1=1
                 """);
             var paramList = new List<object?>();
             if (!string.IsNullOrEmpty(searchTerm))
@@ -85,14 +90,49 @@ public static class ConnectionTools
                                " OR UPPER(c.\"Route\") LIKE ?" +
                                " OR UPPER(ce.\"Purpose\") LIKE ?" +
                                " OR UPPER(ce.\"Note\") LIKE ?" +
-                               " OR UPPER(ce.\"Description\") LIKE ?)");
+                               " OR UPPER(ce.\"Description\") LIKE ?" +
+                               " OR UPPER(ce.\"UserManual\") LIKE ?)");
                     paramList.Add(term); paramList.Add(term);
-                    paramList.Add(term); paramList.Add(term); paramList.Add(term);
+                    paramList.Add(term); paramList.Add(term);
+                    paramList.Add(term); paramList.Add(term);
                 }
                 else
                 {
                     sql.Append(" AND UPPER(c.\"Name\") LIKE ?");
                     paramList.Add(term);
+                }
+            }
+            if (!string.IsNullOrEmpty(status))
+            {
+                // Priority: 1) English type keywords, 2) exact status name, 3) LIKE fallback. Mirrors find_element.
+                int? statusTypeFilter = status.ToLowerInvariant() switch
+                {
+                    "existing"                    => 0,
+                    "planned"                     => 1,
+                    "removed" or "decommissioned" => 2,
+                    _                             => (int?)null
+                };
+                if (statusTypeFilter.HasValue)
+                {
+                    sql.Append(" AND s.\"StatusType\" = ?");
+                    paramList.Add(statusTypeFilter.Value);
+                }
+                else
+                {
+                    var exactCount = FirebirdDb.CountResult(
+                        FirebirdDb.ExecuteQuery(conn,
+                            """SELECT COUNT(*) AS CNT FROM "Status" WHERE UPPER("Name") = UPPER(?)""",
+                            status));
+                    if (exactCount > 0)
+                    {
+                        sql.Append(" AND UPPER(s.\"Name\") = UPPER(?)");
+                        paramList.Add(status);
+                    }
+                    else
+                    {
+                        sql.Append(" AND UPPER(s.\"Name\") LIKE UPPER(?)");
+                        paramList.Add($"%{status.ToUpperInvariant()}%");
+                    }
                 }
             }
             sql.Append(" ORDER BY c.\"Source\", c.\"Name\"");
@@ -137,14 +177,15 @@ public static class ConnectionTools
             var termLbl = !string.IsNullOrEmpty(searchTerm)
                 ? (searchAllFields == true ? $" ~'{searchTerm}'" : $" name~'{searchTerm}'")
                 : "";
+            var stLbl   = !string.IsNullOrEmpty(status) ? $" with status '{status}'" : "";
 
             if (results.Count == 0)
             {
                 var tip = !string.IsNullOrEmpty(category) ? " Tip: call list_categories for available category names." : "";
-                return $"No connections found for {catLbl}{termLbl}{scope}.{tip}";
+                return $"No connections found for {catLbl}{termLbl}{stLbl}{scope}.{tip}";
             }
 
-            var lines = new List<string> { $"Connections {catLbl}{termLbl}{scope} ({results.Count}{(truncated ? $" of {totalCount}" : "")}):\n" };
+            var lines = new List<string> { $"Connections {catLbl}{termLbl}{stLbl}{scope} ({results.Count}{(truncated ? $" of {totalCount}" : "")}):\n" };
 
             string? currentSrc = null;
             foreach (var (r, srcFn, dstFn) in results)
@@ -161,7 +202,11 @@ public static class ConnectionTools
                 var length = r.GetValueOrDefault("Length");
                 var route  = r.Str("Route");
                 var detail = (length is not null and not DBNull) ? $"  ({length} m)" : "";
-                lines.Add($"    --> {dst}  [{name}]{detail}");
+                var st     = r.GetValueOrDefault("STATUSTYPE");
+                var stHint = st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2
+                    ? $"  {{{r.Str("STATUSNAME")}}}"
+                    : "";
+                lines.Add($"    --> {dst}  [{name}]{detail}{stHint}");
                 if (!string.IsNullOrEmpty(route))
                     lines.Add($"        Route: {route}");
 
@@ -175,6 +220,7 @@ public static class ConnectionTools
                             r.Str("Purpose").ToUpperInvariant().Contains(termUp)     ? ("Purpose",     r.Str("Purpose"))     :
                             r.Str("Note").ToUpperInvariant().Contains(termUp)        ? ("Note",        r.Str("Note"))        :
                             r.Str("Description").ToUpperInvariant().Contains(termUp) ? ("Description", r.Str("Description")) :
+                            r.Str("UserManual").ToUpperInvariant().Contains(termUp)  ? ("UserManual",  r.Str("UserManual"))  :
                             default;
                         if (matchField != default)
                         {
@@ -187,7 +233,7 @@ public static class ConnectionTools
                 }
             }
             if (truncated)
-                lines.Add($"\n(Showing first 100 of {totalCount} connections – narrow with category, under, or searchTerm.)");
+                lines.Add($"\n(Showing first 100 of {totalCount} connections – narrow with category, under, searchTerm, or status.)");
             return string.Join("\n", lines);
         }
         catch (Exception ex)
@@ -200,10 +246,10 @@ public static class ConnectionTools
 
     [McpServerTool(Name = "get_connection_details")]
     [Description(
-        "Full details of a single connection: category, source, destination, route, length, " +
-        "purpose, note, and description. " +
+        "Full details of a single connection: category, status, source, destination, route, length, " +
+        "purpose, note, description, and user manual. " +
         "Identify by name, optionally narrowed by source or destination when multiple connections share the same name. " +
-        "update_connection requires calling this first before modifying description, note, or purpose.")]
+        "update_connection requires calling this first before modifying description, note, purpose, or user_manual.")]
     public static string GetConnectionDetails(
         [Description("Connection name to look up")] string name,
         [Description("Full path of the source element – narrows search if name is ambiguous (optional)")] string? source = null,
@@ -257,13 +303,15 @@ public static class ConnectionTools
 
             var detail = FirebirdDb.ExecuteQuery(conn, """
                 SELECT c."Name", c."Source", c."Destination", c."Route", c."Length",
-                       ce."Purpose", ce."Note", ce."Description",
+                       ce."Purpose", ce."Note", ce."Description", ce."UserManual",
                        cat."Name" AS CategoryName,
+                       s."Name"   AS StatusName,
                        pt."Name"  AS PartTypeName
                 FROM "Connection" c
                 JOIN "CEntity"  ce  ON ce."Oid"  = c."Oid"
                 JOIN "CItem"    ci  ON ci."Oid"   = c."Oid"
                 JOIN "Category" cat ON cat."Oid"  = ci."Category"
+                LEFT JOIN "Status"   s  ON s."Oid"   = ce."Status"
                 LEFT JOIN "Part"     p  ON p."Oid"   = c."Oid"
                 LEFT JOIN "PartType" pt ON pt."Oid"  = p."PartType"
                 WHERE c."Oid" = ?
@@ -279,8 +327,10 @@ public static class ConnectionTools
 
             var lines = new List<string> { $"Connection: {d.Str("Name")}\n" };
             lines.Add($"  Category    : {d.Str("CategoryName")}");
+            var status = d.Str("StatusName");
+            if (!string.IsNullOrEmpty(status))      lines.Add($"  Status      : {status}");
             var partType = d.Str("PartTypeName");
-            if (!string.IsNullOrEmpty(partType)) lines.Add($"  Part type   : {partType}");
+            if (!string.IsNullOrEmpty(partType))    lines.Add($"  Part type   : {partType}");
             lines.Add($"  Source      : {srcFn}");
             lines.Add($"  Destination : {dstFn}");
             if (length is not null and not DBNull) lines.Add($"  Length      : {length} m");
@@ -296,6 +346,9 @@ public static class ConnectionTools
 
             var desc = d.Str("Description");
             if (!string.IsNullOrEmpty(desc))        lines.Add($"  Description : {desc}");
+
+            var userManual = d.Str("UserManual");
+            if (!string.IsNullOrEmpty(userManual))  lines.Add($"  User manual : {userManual}");
 
             return string.Join("\n", lines);
         }
@@ -323,8 +376,8 @@ public static class ConnectionTools
         "destination the consumer/endpoint – following the flow direction " +
         "(e.g. circuit breaker → socket, boiler → radiator, main pipe → tap). " +
         "Optional: route (text description of the physical path), length (in meters), " +
-        "purpose, note, description. " +
-        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
+        "status (e.g. 'Planned', 'Removed' – call list_statuses), purpose, note, description, user_manual. " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars). " +
         "Forbidden characters in name: *|<>?\" and tab.")]
     public static string CreateConnection(
         [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting circuit' or 'Cold water supply bathroom'")] string name,
@@ -333,9 +386,11 @@ public static class ConnectionTools
         [Description("Full path of the destination element (where the line ends), e.g. 'House/GF/Living/Ceiling-Light'")] string destination,
         [Description("Route / physical path description, e.g. 'along north wall, through ceiling void' (optional)")] string? route = null,
         [Description("Length in meters (optional), e.g. 4.5")] decimal? length = null,
+        [Description("Status name (optional). Most connections need no status – omit for normal existing lines. Set only when the user mentions a status like 'Planned' (new line not yet pulled) or 'Removed' (decommissioned). Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not self-evident from the name (optional). Only fill with information the user explicitly provided.")] string? purpose = null,
         [Description("Short temporary to-do during planning/construction (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
-        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details (optional). Only fill with information the user explicitly provided — do not generate or infer.")] string? description = null)
+        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details (optional). Only fill with information the user explicitly provided — do not generate or infer.")] string? description = null,
+        [Description("User-facing information: operating instructions, maintenance schedule, troubleshooting tips (optional). Only fill with information the user explicitly provided.")] string? user_manual = null)
     {
         name        = Validate.NormalizeSingleline(name)?.Trim() ?? "";
         category    = category?.Trim()    ?? "";
@@ -353,12 +408,14 @@ public static class ConnectionTools
         purpose     = Validate.NormalizeSingleline(purpose);
         note        = Validate.NormalizeSingleline(note);
         description = Validate.NormalizeMultiline(description);
+        user_manual = Validate.NormalizeMultiline(user_manual);
 
         var lenErr = Validate.Length(name, "name", 150)
                   ?? Validate.Length(route?.Trim(), "route", 1000)
                   ?? Validate.Length(purpose?.Trim(), "purpose", 200)
                   ?? Validate.Length(note?.Trim(), "note", 200, "For permanent or longer information, use description instead.")
-                  ?? Validate.Length(description?.Trim(), "description", 4000);
+                  ?? Validate.Length(description?.Trim(), "description", 4000)
+                  ?? Validate.Length(user_manual?.Trim(), "user_manual", 4000);
         if (lenErr != null) return lenErr;
 
         try
@@ -382,6 +439,14 @@ public static class ConnectionTools
             var combError = QueryHelpers.CheckConnectionCombinationUniqueness(conn, name, categoryOid, srcOid, dstOid);
             if (combError != null) return combError;
 
+            string? statusOid = null;
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                statusOid = QueryHelpers.ResolveStatusOid(conn, status);
+                if (statusOid == null)
+                    return $"Error: status '{status}' not found. Call list_statuses for available statuses.";
+            }
+
             var hint = QueryHelpers.ConnectionSameSrcDstCategoryHint(conn, srcOid, dstOid, categoryOid);
 
             var oid = Guid.NewGuid().ToString("D");
@@ -391,12 +456,14 @@ public static class ConnectionTools
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     INSERT INTO "CEntity" ("Oid", "OptimisticLockField", "ObjectType", "CreatedOn", "CreatedBy",
-                                          "Purpose", "Note", "Description")
-                    VALUES (?, 0, ?, ?, ?, ?, ?, ?)
+                                          "Status", "Purpose", "Note", "Description", "UserManual")
+                    VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, oid, XPObjectTypes.Connection, now, "HomeMemory",
+                    (object?)statusOid           ?? DBNull.Value,
                     (object?)purpose?.Trim()     ?? DBNull.Value,
                     (object?)note?.Trim()        ?? DBNull.Value,
-                    (object?)description?.Trim() ?? DBNull.Value);
+                    (object?)description?.Trim() ?? DBNull.Value,
+                    (object?)user_manual?.Trim() ?? DBNull.Value);
 
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     INSERT INTO "CItem" ("Oid", "Category") VALUES (?, ?)
@@ -430,10 +497,10 @@ public static class ConnectionTools
         "Updates an existing connection. Only provided fields are changed. " +
         "Identify the connection by its current name, optionally narrowed by source/destination " +
         "(required when multiple connections share the same name). " +
-        "Pass 'CLEAR' to empty route, length, purpose, note, or description. " +
-        "IMPORTANT: ALWAYS call get_connection_details before updating description, note, or purpose. " +
+        "Pass 'CLEAR' to empty route, length, status, purpose, note, description, or user_manual. " +
+        "IMPORTANT: ALWAYS call get_connection_details before updating description, note, purpose, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
-        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content).")]
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars).")]
     public static string UpdateConnection(
         [Description("Current name of the connection to update")] string name,
         [Description("Full path of the current source element – narrows search if name is ambiguous (optional)")] string? source = null,
@@ -444,9 +511,11 @@ public static class ConnectionTools
         [Description("New destination element: full path (optional)")] string? new_destination = null,
         [Description("New route description ('CLEAR' to remove)")] string? route = null,
         [Description("New length in meters ('CLEAR' to remove), e.g. 4.5")] string? length = null,
+        [Description("New status name ('CLEAR' to remove). Set only when the user mentions a status like 'Planned' or 'Removed'. Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not self-evident from the name ('CLEAR' to remove)")] string? purpose = null,
         [Description("Short temporary to-do during planning/construction. For permanent technical info use description instead ('CLEAR' to remove)")] string? note = null,
-        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details ('CLEAR' to remove)")] string? description = null)
+        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details ('CLEAR' to remove)")] string? description = null,
+        [Description("User-facing information: operating instructions, maintenance schedule, troubleshooting tips ('CLEAR' to remove)")] string? user_manual = null)
     {
         name = name?.Trim() ?? "";
         if (string.IsNullOrEmpty(name))
@@ -457,14 +526,17 @@ public static class ConnectionTools
 
         route       = Validate.NormalizeClear(route);
         length      = Validate.NormalizeClear(length);
+        status      = Validate.NormalizeClear(status);
         purpose     = Validate.NormalizeClear(purpose);
         note        = Validate.NormalizeClear(note);
         description = Validate.NormalizeClear(description);
+        user_manual = Validate.NormalizeClear(user_manual);
 
         route       = Validate.NormalizeMultiline(route);
         purpose     = Validate.NormalizeSingleline(purpose);
         note        = Validate.NormalizeSingleline(note);
         description = Validate.NormalizeMultiline(description);
+        user_manual = Validate.NormalizeMultiline(user_manual);
 
         if (new_name != null)
         {
@@ -479,7 +551,8 @@ public static class ConnectionTools
                   ?? Validate.Length(route is not null and not "CLEAR" ? route.Trim() : null, "route", 1000)
                   ?? Validate.Length(purpose is not null and not "CLEAR" ? purpose.Trim() : null, "purpose", 200)
                   ?? Validate.Length(note is not null and not "CLEAR" ? note.Trim() : null, "note", 200, "For permanent or longer information, use description instead.")
-                  ?? Validate.Length(description is not null and not "CLEAR" ? description.Trim() : null, "description", 4000);
+                  ?? Validate.Length(description is not null and not "CLEAR" ? description.Trim() : null, "description", 4000)
+                  ?? Validate.Length(user_manual is not null and not "CLEAR" ? user_manual.Trim() : null, "user_manual", 4000);
         if (lenErr != null) return lenErr;
 
         try
@@ -589,8 +662,21 @@ public static class ConnectionTools
                 }
             }
 
+            string? statusOid = null;
+            bool updateStatus = false;
+            if (status != null)
+            {
+                updateStatus = true;
+                if (status != "CLEAR")
+                {
+                    statusOid = QueryHelpers.ResolveStatusOid(conn, status.Trim());
+                    if (statusOid == null)
+                        return $"Error: status '{status}' not found. Call list_statuses for available statuses.";
+                }
+            }
+
             var overwriteAdvisories = QueryHelpers.CollectOverwriteAdvisories(
-                conn, oid, description, note, purpose);
+                conn, oid, description, note, purpose, user_manual);
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
@@ -646,6 +732,16 @@ public static class ConnectionTools
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "CEntity" SET "Description" = ? WHERE "Oid" = ?""",
                         description == "CLEAR" ? DBNull.Value : (object)description.Trim(), oid);
+
+                if (user_manual != null)
+                    FirebirdDb.ExecuteNonQuery(conn, txn,
+                        """UPDATE "CEntity" SET "UserManual" = ? WHERE "Oid" = ?""",
+                        user_manual == "CLEAR" ? DBNull.Value : (object)user_manual.Trim(), oid);
+
+                if (updateStatus)
+                    FirebirdDb.ExecuteNonQuery(conn, txn,
+                        """UPDATE "CEntity" SET "Status" = ? WHERE "Oid" = ?""",
+                        status == "CLEAR" ? DBNull.Value : (object)statusOid!, oid);
 
                 var displayName = new_name ?? name;
                 var result = $"✓ Connection '{displayName}' updated.";

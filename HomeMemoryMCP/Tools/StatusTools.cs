@@ -23,9 +23,9 @@ public static class StatusTools
         "Lists all available statuses with reference counts, grouped by status type. " +
         "Counts are shown separately for elements, connections, part types, and other records (when non-zero). " +
         "Status types: Existing (0), Planned (1), Removed (2). " +
-        "Use status names from this list in create_element, update_element, and find_element. " +
-        "create_element and update_element require the exact status name (case-insensitive). " +
-        "find_element also accepts partial name matches. " +
+        "Use status names from this list in create_element, update_element, create_connection, update_connection, find_element, and get_connections. " +
+        "create/update tools require the exact status name (case-insensitive). " +
+        "find_element and get_connections also accept partial name matches and language-independent type keywords (Existing/Planned/Removed). " +
         "If no suitable status exists, use create_status.")]
     public static string ListStatuses()
     {
@@ -81,7 +81,7 @@ public static class StatusTools
                 lines.Add($"    - {name}{detail}{noteStr}");
             }
 
-            lines.Add("\n  Use exact name (case-insensitive) in create_element / update_element. find_element also accepts partial matches.");
+            lines.Add("\n  Use exact name (case-insensitive) in create/update_element and create/update_connection. find_element and get_connections also accept partial matches plus type keywords (Existing/Planned/Removed).");
             return string.Join("\n", lines);
         }
         catch (Exception ex)
@@ -354,7 +354,7 @@ public static class StatusTools
 
                 var hints = new List<string>();
                 if (elemCount  > 0) hints.Add($"call find_element with status='{name}' to locate the elements");
-                if (connCount  > 0) hints.Add("connection status is not yet searchable or editable via MCP");
+                if (connCount  > 0) hints.Add($"call get_connections with status='{name}' to locate the connections");
                 if (ptCount    > 0) hints.Add("part type status is not currently manageable via MCP");
                 if (otherCount > 0) hints.Add("other referenced records are not currently manageable via MCP");
 

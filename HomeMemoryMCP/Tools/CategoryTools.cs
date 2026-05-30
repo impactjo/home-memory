@@ -20,7 +20,7 @@ public static class CategoryTools
                    COUNT(conn."Oid") AS CONN_COUNT,
                    COUNT(pt."Oid")   AS PT_COUNT,
                    COUNT(ci."Oid")   AS CI_COUNT,
-                   ce."Description"
+                   ce."Purpose", ce."Note", ce."Description", ce."UserManual"
             FROM CAT_TREE ct
             LEFT JOIN "CItem"      ci   ON ci."Category" = ct."Oid"
             LEFT JOIN "Element"    e    ON e."Oid"    = ci."Oid"
@@ -28,7 +28,8 @@ public static class CategoryTools
             LEFT JOIN "PartType"   pt   ON pt."Oid"  = ci."Oid"
             LEFT JOIN "CEntity"    ce   ON ce."Oid"  = ct."Oid"
             GROUP BY ct."Oid", ct.CAT_FULLNAME, ct."Name", ct."ShortName",
-                     ct.CAT_DEPTH, ct."IsAreaCategory", ce."Description"
+                     ct.CAT_DEPTH, ct."IsAreaCategory",
+                     ce."Purpose", ce."Note", ce."Description", ce."UserManual"
             ORDER BY ct.CAT_FULLNAME
             """;
         return FirebirdDb.ExecuteQuery(conn, sql);
@@ -76,16 +77,21 @@ public static class CategoryTools
                 if (pt > 0) parts.Add($"{pt} part type{(pt == 1 ? "" : "s")}");
                 if (ot > 0) parts.Add($"{ot} other");
                 var countStr = parts.Count > 0 ? $"  ({string.Join(", ", parts)})" : "";
-                var descFlag = !string.IsNullOrEmpty(r.Str("Description")) ? "  [i]" : "";
+                var flagParts = new List<string>();
+                if (!string.IsNullOrEmpty(r.Str("Purpose")))     flagParts.Add("p");
+                if (!string.IsNullOrEmpty(r.Str("Note")))        flagParts.Add("n");
+                if (!string.IsNullOrEmpty(r.Str("Description"))) flagParts.Add("i");
+                if (!string.IsNullOrEmpty(r.Str("UserManual")))  flagParts.Add("u");
+                var flags = flagParts.Count > 0 ? $"  [{string.Join("", flagParts)}]" : "";
                 var areaFlag = isStructuralArea ? "  [structural area]" : "";
                 // Show explicit path when ShortName changes the path segment (prevents copy-paste errors)
                 var catFullname = r.Str("CAT_FULLNAME");
                 var pathHint = !string.IsNullOrEmpty(sn) && sn != name
                     ? $"  [path: {catFullname}]"
                     : "";
-                lines.Add($"  {indent}{icon} {label}{areaFlag}{pathHint}{countStr}{descFlag}");
+                lines.Add($"  {indent}{icon} {label}{areaFlag}{pathHint}{countStr}{flags}");
             }
-            lines.Add("\n  [i] = description available");
+            lines.Add("\n  [p] = purpose, [n] = note, [i] = description, [u] = user manual — call get_category_details for content");
             return string.Join("\n", lines);
         }
         catch (Exception ex)
@@ -193,16 +199,129 @@ public static class CategoryTools
         }
     }
 
+    // ── Tool: get_category_details ────────────────────────────────────────────
+
+    [McpServerTool(Name = "get_category_details")]
+    [Description(
+        "Full details of a single object category: path, parent, structural-area flag, " +
+        "item counts (elements, connections, part types, other), purpose, note, description, and user manual. " +
+        "Identify by full path (e.g. 'Electrical/Cable') or by name/short name when unambiguous. " +
+        "update_category requires calling this first before modifying purpose, note, description, or user_manual.")]
+    public static string GetCategoryDetails(
+        [Description("Full category path (e.g. 'Electrical/Cable'), name, or short name. Use full path to disambiguate.")] string category)
+    {
+        category = category?.Trim() ?? "";
+        if (string.IsNullOrEmpty(category))
+            return "Error: 'category' is required.";
+
+        try
+        {
+            using var conn = FirebirdDb.OpenConnection();
+
+            var (catOid, catError) = QueryHelpers.ResolveCategoryOid(conn, category);
+            if (catError != null) return catError;
+            if (catOid == null)
+                return $"Error: category '{category}' not found. Call list_categories to see available categories.";
+
+            var rows = FirebirdDb.ExecuteQuery(conn, $"""
+                {SqlQueries.CatCte}
+                SELECT ct.CAT_FULLNAME, c."Name", c."ShortName",
+                       c."IsAreaCategory", c."ParentCategory",
+                       ce."Purpose", ce."Note", ce."Description", ce."UserManual"
+                FROM "Category" c
+                JOIN CAT_TREE ct ON ct."Oid" = c."Oid"
+                LEFT JOIN "CEntity" ce ON ce."Oid" = c."Oid"
+                WHERE c."Oid" = ?
+                """, catOid);
+
+            if (rows.Count == 0)
+                return $"Error: category '{category}' not found.";
+
+            var r = rows[0];
+            var fullPath = r.Str("CAT_FULLNAME");
+            var name     = r.Str("Name");
+            var sn       = r.Str("ShortName");
+            var isArea   = FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"));
+
+            string? parentPath = null;
+            var parentOidObj = r.GetValueOrDefault("ParentCategory");
+            if (parentOidObj is not null and not DBNull)
+            {
+                var parentRows = FirebirdDb.ExecuteQuery(conn, $"""
+                    {SqlQueries.CatCte}
+                    SELECT CAT_FULLNAME FROM CAT_TREE WHERE "Oid" = ?
+                    """, parentOidObj);
+                if (parentRows.Count > 0) parentPath = parentRows[0].Str("CAT_FULLNAME");
+            }
+
+            var usageRows = FirebirdDb.ExecuteQuery(conn, """
+                SELECT
+                    COUNT(e."Oid")  AS ELEM_COUNT,
+                    COUNT(cn."Oid") AS CONN_COUNT,
+                    COUNT(pt."Oid") AS PT_COUNT,
+                    COUNT(ci."Oid") AS CI_COUNT
+                FROM "CItem" ci
+                LEFT JOIN "Element"    e  ON e."Oid"  = ci."Oid"
+                LEFT JOIN "Connection" cn ON cn."Oid" = ci."Oid"
+                LEFT JOIN "PartType"   pt ON pt."Oid" = ci."Oid"
+                WHERE ci."Category" = ?
+                """, catOid);
+            var elemCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("ELEM_COUNT") ?? 0L);
+            var connCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("CONN_COUNT") ?? 0L);
+            var ptCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("PT_COUNT")   ?? 0L);
+            var ciCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("CI_COUNT")   ?? 0L);
+            var otherCount = ciCount - elemCount - connCount - ptCount;
+
+            var childRows = FirebirdDb.ExecuteQuery(conn,
+                """SELECT COUNT(*) AS CNT FROM "Category" WHERE "ParentCategory" = ?""", catOid);
+            var childCount = FirebirdDb.CountResult(childRows);
+
+            var lines = new List<string> { $"Category: {fullPath}\n" };
+            lines.Add($"  Name             : {name}");
+            if (!string.IsNullOrEmpty(sn) && sn != name)
+                lines.Add($"  Short name       : {sn}");
+            lines.Add($"  Parent           : {parentPath ?? "(top-level)"}");
+            lines.Add($"  Structural area  : {(isArea ? "yes" : "no")}");
+
+            var countParts = new List<string>();
+            if (elemCount  > 0) countParts.Add($"{elemCount} element{(elemCount == 1 ? "" : "s")}");
+            if (connCount  > 0) countParts.Add($"{connCount} connection{(connCount == 1 ? "" : "s")}");
+            if (ptCount    > 0) countParts.Add($"{ptCount} part type{(ptCount == 1 ? "" : "s")}");
+            if (otherCount > 0) countParts.Add($"{otherCount} other");
+            if (childCount > 0) countParts.Add($"{childCount} child categor{(childCount == 1 ? "y" : "ies")}");
+            lines.Add($"  Usage            : {(countParts.Count > 0 ? string.Join(", ", countParts) : "none")}");
+
+            if (!string.IsNullOrEmpty(r.Str("Purpose")))
+                lines.Add($"  Purpose          : {r.Str("Purpose")}");
+            if (!string.IsNullOrEmpty(r.Str("Note")))
+                lines.Add($"  Note             : {r.Str("Note")}");
+            if (!string.IsNullOrEmpty(r.Str("Description")))
+                lines.Add($"  Description      : {r.Str("Description")}");
+            if (!string.IsNullOrEmpty(r.Str("UserManual")))
+                lines.Add($"  User manual      : {r.Str("UserManual")}");
+
+            return string.Join("\n", lines);
+        }
+        catch (Exception ex)
+        {
+            return $"Error: {ex.Message}";
+        }
+    }
+
     // ── Tool: update_category ─────────────────────────────────────────────────
 
     [McpServerTool(Name = "update_category")]
     [Description(
         "Updates an existing object category: rename, change short name, description, structural area flag, or move to a different parent. " +
         "Required: category (current full path, e.g. 'Electrical/Lighting'). " +
-        "Optional: new_name, new_short_name (CLEAR to remove), description (CLEAR to remove), " +
+        "Optional: new_name, new_short_name (CLEAR to remove), purpose (CLEAR to remove), note (CLEAR to remove), " +
+        "description (CLEAR to remove), user_manual (CLEAR to remove), " +
         "is_structural_area ('true' or 'false'), " +
         "new_parent (full category path, e.g. 'Electrical'; CLEAR to move to top-level). " +
         "At least one optional field must be provided. " +
+        "IMPORTANT: ALWAYS call get_category_details before updating purpose, note, description, or user_manual. " +
+        "If the field already has content, inform the user and ask whether to replace or extend. " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user/documentation guide -> user_manual (multiline, 4000 chars). " +
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab. " +
         "Note: renaming/moving a category automatically updates the full path of all child categories " +
         "(FullName is computed dynamically – no stored paths need to be migrated).")]
@@ -210,7 +329,10 @@ public static class CategoryTools
         [Description("Current full path of the category to update, e.g. 'Electrical/Lighting'.")] string category,
         [Description("New name (optional).")] string? new_name = null,
         [Description("New short name (optional). Use 'CLEAR' to remove.")] string? new_short_name = null,
-        [Description("New description (optional). Use 'CLEAR' to remove.")] string? description = null,
+        [Description("Intended use / explanation of what this category is for ('CLEAR' to remove). Only fill with information the user explicitly provided.")] string? purpose = null,
+        [Description("Short temporary planning note ('CLEAR' to remove). For permanent technical info use description instead.")] string? note = null,
+        [Description("Permanent technical info about this category itself, e.g. trade scope, conventions, references (optional, multiline, 4000 chars). Category-level only – not for individual items in this category. Use 'CLEAR' to remove.")] string? description = null,
+        [Description("Documentation guide for this category, e.g. 'how to document items of this trade' ('CLEAR' to remove).")] string? user_manual = null,
         [Description("Set to true to mark as structural area (navigable container like Room/Floor), false to unmark.")] bool? is_structural_area = null,
         [Description("New parent category full path (optional). Use 'CLEAR' to move to top-level.")] string? new_parent = null)
     {
@@ -218,8 +340,10 @@ public static class CategoryTools
         if (string.IsNullOrEmpty(category))
             return "Error: 'category' is required.";
 
-        if (new_name == null && new_short_name == null && description == null && is_structural_area == null && new_parent == null)
-            return "Error: provide at least one of new_name, new_short_name, description, is_structural_area, new_parent.";
+        if (new_name == null && new_short_name == null && purpose == null && note == null
+            && description == null && user_manual == null
+            && is_structural_area == null && new_parent == null)
+            return "Error: provide at least one of new_name, new_short_name, purpose, note, description, user_manual, is_structural_area, new_parent.";
 
         // Validate new_name
         if (new_name != null)
@@ -232,23 +356,33 @@ public static class CategoryTools
         }
 
         // Validate new_short_name
-        bool clearShortName = new_short_name?.Trim().Equals("CLEAR", StringComparison.OrdinalIgnoreCase) == true;
-        if (!clearShortName && new_short_name != null)
+        new_short_name = Validate.NormalizeClear(new_short_name);
+        if (new_short_name != null && new_short_name != "CLEAR")
         {
             new_short_name = Validate.NormalizeSingleline(new_short_name)!.Trim();
             if (Validate.InvalidChars.IsMatch(new_short_name))
                 return "Error: new_short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
         }
 
-        bool clearDescription = description?.Trim().Equals("CLEAR", StringComparison.OrdinalIgnoreCase) == true;
-        bool clearParent      = new_parent?.Trim().Equals("CLEAR", StringComparison.OrdinalIgnoreCase) == true;
+        purpose     = Validate.NormalizeClear(purpose);
+        note        = Validate.NormalizeClear(note);
+        description = Validate.NormalizeClear(description);
+        user_manual = Validate.NormalizeClear(user_manual);
+        new_parent  = Validate.NormalizeClear(new_parent);
+        bool clearParent = new_parent == "CLEAR";
 
+        purpose     = Validate.NormalizeSingleline(purpose);
+        note        = Validate.NormalizeSingleline(note);
         description = Validate.NormalizeMultiline(description);
+        user_manual = Validate.NormalizeMultiline(user_manual);
 
         // Field length validation
         var lenErr = Validate.Length(new_name, "new_name", 100)
-                  ?? Validate.Length(!clearShortName ? new_short_name : null, "new_short_name", 50)
-                  ?? Validate.Length(!clearDescription ? description?.Trim() : null, "description", 4000);
+                  ?? Validate.Length(new_short_name != "CLEAR" ? new_short_name : null, "new_short_name", 50)
+                  ?? Validate.Length(purpose     is not null and not "CLEAR" ? purpose.Trim()     : null, "purpose", 200)
+                  ?? Validate.Length(note        is not null and not "CLEAR" ? note.Trim()        : null, "note", 200, "For permanent or longer information, use description instead.")
+                  ?? Validate.Length(description is not null and not "CLEAR" ? description.Trim() : null, "description", 4000)
+                  ?? Validate.Length(user_manual is not null and not "CLEAR" ? user_manual.Trim() : null, "user_manual", 4000);
         if (lenErr != null) return lenErr;
 
         try
@@ -281,7 +415,7 @@ public static class CategoryTools
             var effectiveName = new_name ?? currentName;
 
             string? effectiveSN;
-            if (clearShortName)
+            if (new_short_name == "CLEAR")
                 effectiveSN = null;
             else if (new_short_name != null)
                 effectiveSN = new_short_name;
@@ -353,6 +487,9 @@ public static class CategoryTools
             if (FirebirdDb.CountResult(segRows) > 0)
                 return $"Error: another category with path segment '{effectiveSegment}' already exists under the same parent (would create a duplicate category path).";
 
+            var overwriteAdvisories = QueryHelpers.CollectOverwriteAdvisories(
+                conn, oid, description, note, purpose, user_manual);
+
             var now = DateTime.UtcNow;
             using var txn = conn.BeginTransaction();
             try
@@ -377,17 +514,25 @@ public static class CategoryTools
                     (object?)effectiveParentOid ?? DBNull.Value,
                     oid);
 
+                if (purpose != null)
+                    FirebirdDb.ExecuteNonQuery(conn, txn,
+                        """UPDATE "CEntity" SET "Purpose" = ? WHERE "Oid" = ?""",
+                        purpose == "CLEAR" ? DBNull.Value : (object)purpose.Trim(), oid);
+
+                if (note != null)
+                    FirebirdDb.ExecuteNonQuery(conn, txn,
+                        """UPDATE "CEntity" SET "Note" = ? WHERE "Oid" = ?""",
+                        note == "CLEAR" ? DBNull.Value : (object)note.Trim(), oid);
+
                 if (description != null)
-                {
-                    var effectiveDesc = clearDescription ? null : description.Trim();
-                    FirebirdDb.ExecuteNonQuery(conn, txn, """
-                        UPDATE "CEntity"
-                        SET "Description" = ?
-                        WHERE "Oid" = ?
-                        """,
-                        (object?)effectiveDesc ?? DBNull.Value,
-                        oid);
-                }
+                    FirebirdDb.ExecuteNonQuery(conn, txn,
+                        """UPDATE "CEntity" SET "Description" = ? WHERE "Oid" = ?""",
+                        description == "CLEAR" ? DBNull.Value : (object)description.Trim(), oid);
+
+                if (user_manual != null)
+                    FirebirdDb.ExecuteNonQuery(conn, txn,
+                        """UPDATE "CEntity" SET "UserManual" = ? WHERE "Oid" = ?""",
+                        user_manual == "CLEAR" ? DBNull.Value : (object)user_manual.Trim(), oid);
 
                 var newIsArea = is_structural_area;
                 if (newIsArea.HasValue)
@@ -405,13 +550,19 @@ public static class CategoryTools
 
                 var changes = new List<string>();
                 if (new_name != null)       changes.Add($"name → '{effectiveName}'");
-                if (new_short_name != null) changes.Add(clearShortName ? "short_name → (removed)" : $"short_name → '{effectiveSN}'");
-                if (description != null)    changes.Add(clearDescription ? "description → (removed)" : "description updated");
+                if (new_short_name != null) changes.Add(new_short_name == "CLEAR" ? "short_name → (removed)" : $"short_name → '{effectiveSN}'");
+                if (purpose != null)        changes.Add(purpose == "CLEAR" ? "purpose → (removed)" : "purpose updated");
+                if (note != null)           changes.Add(note == "CLEAR" ? "note → (removed)" : "note updated");
+                if (description != null)    changes.Add(description == "CLEAR" ? "description → (removed)" : "description updated");
+                if (user_manual != null)    changes.Add(user_manual == "CLEAR" ? "user_manual → (removed)" : "user_manual updated");
                 if (newIsArea.HasValue)     changes.Add($"is_structural_area → {newIsArea.Value.ToString().ToLower()}");
-                if (clearParent || new_parent != null)
+                if (clearParent || (new_parent != null && new_parent != "CLEAR"))
                     changes.Add(effectiveParentOid == null ? "parent → (top-level)" : $"parent → '{new_parent}'");
 
-                return $"✓ Category '{category}' updated: {string.Join(", ", changes)}.";
+                var result = $"✓ Category '{category}' updated: {string.Join(", ", changes)}.";
+                foreach (var adv in overwriteAdvisories)
+                    result += $"\n  Advisory: {adv}.";
+                return result;
             }
             catch
             {
@@ -431,15 +582,20 @@ public static class CategoryTools
     [Description(
         "Creates a new object category. Use this when no suitable category exists for a new element or connection. " +
         "Required: name. Optional: parent (full category path, e.g. 'Electrical'), " +
-        "short_name, description, is_structural_area (default false – structural area categories are " +
+        "short_name, purpose, note, description, user_manual, " +
+        "is_structural_area (default false – structural area categories are " +
         "navigable building containers like Room/Floor, not trades or surface zones). " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); documentation guide for this category -> user_manual (multiline, 4000 chars). " +
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab. " +
         "After creating, use the returned category path in create_element or create_connection.")]
     public static string CreateCategory(
         [Description("Category name, e.g. 'Pool Technology' or 'Solar'")] string name,
         [Description("Full path of the parent category, e.g. 'Heating' or 'Electrical/Low-Voltage'. Empty = top-level.")] string? parent = null,
         [Description("Short name (optional), used as path segment, e.g. 'Pool'")] string? short_name = null,
-        [Description("Description of this category (optional)")] string? description = null,
+        [Description("Intended use / explanation of what this category is for (optional). Only fill with information the user explicitly provided.")] string? purpose = null,
+        [Description("Short temporary planning note (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
+        [Description("Permanent technical info about this category itself, e.g. trade scope, conventions, references (optional, multiline, 4000 chars). Category-level only – not for individual items in this category. Only fill with information the user explicitly provided.")] string? description = null,
+        [Description("Documentation guide for this category, e.g. 'how to document items of this trade' (optional). Only fill with information the user explicitly provided.")] string? user_manual = null,
         [Description("Set to true for structural area categories (Building, Floor, Room). Omit or set to false (default) for trade/device categories or surface zones (Wall Section, Ceiling Section).")] bool? is_structural_area = null)
     {
         name = Validate.NormalizeSingleline(name)?.Trim() ?? "";
@@ -452,12 +608,18 @@ public static class CategoryTools
         if (short_name != null && Validate.InvalidChars.IsMatch(short_name))
             return "Error: short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
 
+        purpose     = Validate.NormalizeSingleline(purpose);
+        note        = Validate.NormalizeSingleline(note);
         description = Validate.NormalizeMultiline(description);
+        user_manual = Validate.NormalizeMultiline(user_manual);
 
         // Field length validation
         var lenErr = Validate.Length(name, "name", 100)
                   ?? Validate.Length(short_name, "short_name", 50)
-                  ?? Validate.Length(description?.Trim(), "description", 4000);
+                  ?? Validate.Length(purpose?.Trim(), "purpose", 200)
+                  ?? Validate.Length(note?.Trim(), "note", 200, "For permanent or longer information, use description instead.")
+                  ?? Validate.Length(description?.Trim(), "description", 4000)
+                  ?? Validate.Length(user_manual?.Trim(), "user_manual", 4000);
         if (lenErr != null) return lenErr;
 
         var isArea = is_structural_area ?? false;
@@ -524,11 +686,15 @@ public static class CategoryTools
             {
                 // CEntity: base row (no CItem/Part for categories)
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
-                    INSERT INTO "CEntity" ("Oid", "OptimisticLockField", "ObjectType", "CreatedOn", "CreatedBy", "Description")
-                    VALUES (?, 0, ?, ?, ?, ?)
+                    INSERT INTO "CEntity" ("Oid", "OptimisticLockField", "ObjectType", "CreatedOn", "CreatedBy",
+                                          "Purpose", "Note", "Description", "UserManual")
+                    VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     oid, XPObjectTypes.Category, now, "HomeMemory",
-                    (object?)description?.Trim() ?? DBNull.Value);
+                    (object?)purpose?.Trim()     ?? DBNull.Value,
+                    (object?)note?.Trim()        ?? DBNull.Value,
+                    (object?)description?.Trim() ?? DBNull.Value,
+                    (object?)user_manual?.Trim() ?? DBNull.Value);
 
                 // Category: the actual category row
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
@@ -565,7 +731,7 @@ public static class CategoryTools
         "(2) any element, connection, or part type references this category – " +
         "ask the user how to handle them first (use get_by_category for elements, get_connections for connections; part type references are not directly discoverable via MCP). " +
         "When deletion fails for either reason, treat it as a stop signal: report the blocked scope and ask for explicit confirmation before taking further steps. " +
-        "Warning: any description stored on the category will be lost. " +
+        "Warning: any purpose, note, description, or user manual stored on the category will be lost. " +
         "If the full path is not known, call list_categories first. " +
         "Note: pre-seeded categories should rarely be deleted – consider update_category to rename instead.")]
     public static string DeleteCategory(
