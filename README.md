@@ -162,13 +162,12 @@ Creates a planned element, so you can track what exists and what's coming.
 
 ### 4. Use it from your phone (optional)
 
-Home Memory runs locally, but you can use it from your phone through [Claude Code Remote Control](https://code.claude.com/docs/en/remote-control).
+Home Memory runs locally, but you can use it from your phone through the remote access features that Claude Code and Codex offer. In both cases your Home Memory database and MCP server stay on your machine; the phone is just a remote window into a session running on that host.
 
-Use Home Memory from a local Claude Code session, enable Remote Control, then continue the same session from the Claude mobile app or `claude.ai/code`. Your Home Memory database and MCP server stay on your machine; the phone is just a remote window into that running session.
+Handy whenever you are away from your computer and want to look something up or capture it on the spot, whether at the fuse box, out in the garden, or snapping a photo of a new appliance.
 
-Useful when you are standing at the fuse box or next to an appliance and want to ask your home directly.
-
-Requires Claude Code Remote Control, a signed-in Claude account, and a running local Claude Code process.
+- **Claude Code:** start a local session, enable [Remote Control](https://code.claude.com/docs/en/remote-control), then continue it from the Claude mobile app or `claude.ai/code`. Requires a signed-in Claude account.
+- **Codex:** enable [remote connections](https://developers.openai.com/codex/remote-connections) in the Codex App on your host machine, then scan the QR code from the ChatGPT mobile app.
 
 ### Build from Source (advanced)
 
