@@ -105,15 +105,15 @@ internal static class QueryHelpers
     internal static (string? Oid, string? Error) ResolveCategoryOid(FbConnection conn, string? category)
     {
         if (string.IsNullOrWhiteSpace(category)) return (null, null);
-        var upper = NormalizePath(category).ToUpper();
+        var normalized = NormalizePath(category);
 
-        if (upper.Contains('/'))
+        if (normalized.Contains('/'))
         {
             // Contains slash → treat as full category path (e.g. 'Electrical/Cable')
             var pathRows = FirebirdDb.ExecuteQuery(conn, $"""
                 {SqlQueries.CatCte}
-                SELECT "Oid" FROM CAT_TREE WHERE UPPER(CAT_FULLNAME) = ?
-                """, upper);
+                SELECT "Oid" FROM CAT_TREE WHERE UPPER(CAT_FULLNAME) = UPPER(?)
+                """, normalized);
             return pathRows.Count > 0 ? (pathRows[0].Str("Oid"), null) : (null, null);
         }
 
@@ -121,8 +121,8 @@ internal static class QueryHelpers
         var rows = FirebirdDb.ExecuteQuery(conn, $"""
             {SqlQueries.CatCte}
             SELECT "Oid", CAT_FULLNAME FROM CAT_TREE
-            WHERE UPPER("Name") = ? OR UPPER("ShortName") = ?
-            """, upper, upper);
+            WHERE UPPER("Name") = UPPER(?) OR UPPER("ShortName") = UPPER(?)
+            """, normalized, normalized);
 
         if (rows.Count == 0) return (null, null);
         if (rows.Count == 1) return (rows[0].Str("Oid"), null);

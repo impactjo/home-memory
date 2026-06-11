@@ -164,8 +164,9 @@ public static class StatusTools
             var currentST   = row.Int("StatusType");
             var currentNote = row.Str("Note");
 
-            // Effective values
-            var effectiveName = new_name ?? name;
+            // Effective values. Fall back to the stored name (not the case-insensitive lookup
+            // input) so a note-only update never silently rewrites the canonical name casing.
+            var effectiveName = new_name ?? row.Str("Name");
             var effectiveST   = new_status_type != null ? statusTypeInt : currentST;
             string? effectiveNote;
             if (clearNote)

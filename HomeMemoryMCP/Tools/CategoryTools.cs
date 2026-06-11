@@ -360,6 +360,8 @@ public static class CategoryTools
         if (new_short_name != null && new_short_name != "CLEAR")
         {
             new_short_name = Validate.NormalizeSingleline(new_short_name)!.Trim();
+            if (string.IsNullOrEmpty(new_short_name))
+                return "Error: 'new_short_name' cannot be empty – use 'CLEAR' to remove it.";
             if (Validate.InvalidChars.IsMatch(new_short_name))
                 return "Error: new_short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
         }

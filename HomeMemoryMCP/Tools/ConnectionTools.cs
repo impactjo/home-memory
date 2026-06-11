@@ -169,10 +169,16 @@ public static class ConnectionTools
                 results.Add((r, srcFn, dstFn));
             }
 
-            results.Sort((a, b) => string.Compare(
-                a.srcFn + a.row.Str("Name"),
-                b.srcFn + b.row.Str("Name"),
-                StringComparison.OrdinalIgnoreCase));
+            // Sort by source first, then name. Concatenating srcFn + name would interleave
+            // sources whose paths are prefixes of one another (e.g. "Office" vs "Office2"),
+            // which then prints the same source header more than once.
+            results.Sort((a, b) =>
+            {
+                var bySrc = string.Compare(a.srcFn, b.srcFn, StringComparison.OrdinalIgnoreCase);
+                return bySrc != 0
+                    ? bySrc
+                    : string.Compare(a.row.Str("Name"), b.row.Str("Name"), StringComparison.OrdinalIgnoreCase);
+            });
 
             var totalCount = results.Count;
             var truncated = totalCount > 100;
@@ -292,8 +298,8 @@ public static class ConnectionTools
                 dstOid = dstRow.Str("Oid");
             }
 
-            var findSql  = """SELECT c."Oid" FROM "Connection" c WHERE UPPER(c."Name") = ?""";
-            var findArgs = new List<object?> { name.ToUpper() };
+            var findSql  = """SELECT c."Oid" FROM "Connection" c WHERE UPPER(c."Name") = UPPER(?)""";
+            var findArgs = new List<object?> { name };
             if (srcOid != null) { findSql += """ AND c."Source" = ?""";      findArgs.Add(srcOid); }
             if (dstOid != null) { findSql += """ AND c."Destination" = ?"""; findArgs.Add(dstOid); }
 
@@ -589,8 +595,8 @@ public static class ConnectionTools
                 }
             }
 
-            var findSql  = """SELECT "Oid" FROM "Connection" WHERE UPPER("Name") = ?""";
-            var findArgs = new List<object?> { name.ToUpper() };
+            var findSql  = """SELECT "Oid" FROM "Connection" WHERE UPPER("Name") = UPPER(?)""";
+            var findArgs = new List<object?> { name };
             if (srcOid != null) { findSql += """ AND "Source" = ?""";      findArgs.Add(srcOid); }
             if (dstOid != null) { findSql += """ AND "Destination" = ?"""; findArgs.Add(dstOid); }
 
@@ -794,8 +800,8 @@ public static class ConnectionTools
                 }
             }
 
-            var sql  = """SELECT "Oid" FROM "Connection" WHERE UPPER("Name") = ?""";
-            var args = new List<object?> { name.ToUpper() };
+            var sql  = """SELECT "Oid" FROM "Connection" WHERE UPPER("Name") = UPPER(?)""";
+            var args = new List<object?> { name };
             if (srcOid != null) { sql += """ AND "Source" = ?""";      args.Add(srcOid); }
             if (dstOid != null) { sql += """ AND "Destination" = ?"""; args.Add(dstOid); }
 
