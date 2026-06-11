@@ -64,8 +64,8 @@ public static class ExploreTools
                 var paramList = new List<object?>();
                 if (!string.IsNullOrEmpty(under))
                 {
-                    sql.Append(" AND (UPPER(et.FULLNAME) LIKE UPPER(?) OR UPPER(et.FULLNAME) = UPPER(?))");
-                    paramList.Add(under + "/%");
+                    sql.Append(" AND (UPPER(et.FULLNAME) LIKE UPPER(?) ESCAPE '\\' OR UPPER(et.FULLNAME) = UPPER(?))");
+                    paramList.Add(FirebirdDb.EscapeLike(under) + "/%");
                     paramList.Add(under);
                 }
                 sql.Append(" ORDER BY et.SORTPATH");
@@ -90,8 +90,8 @@ public static class ExploreTools
                 var paramList = new List<object?>();
                 if (!string.IsNullOrEmpty(under))
                 {
-                    sql.Append(" AND (UPPER(et.FULLNAME) LIKE UPPER(?) OR UPPER(et.FULLNAME) = UPPER(?))");
-                    paramList.Add(under + "/%");
+                    sql.Append(" AND (UPPER(et.FULLNAME) LIKE UPPER(?) ESCAPE '\\' OR UPPER(et.FULLNAME) = UPPER(?))");
+                    paramList.Add(FirebirdDb.EscapeLike(under) + "/%");
                     paramList.Add(under);
                 }
                 sql.Append(" ORDER BY et.SORTPATH");
@@ -113,8 +113,6 @@ public static class ExploreTools
                 var sn     = row.Str("ShortName");
                 if (!string.IsNullOrEmpty(sn) && sn != label)
                     label += $" ({sn})";
-                if (structuralAreasOnly && row.Str("CATNAME") == "E-Verteiler")
-                    label += "  [E-Verteiler]";
                 var st = row.GetValueOrDefault("STATUSTYPE");
                 if (st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2)
                     label += $"  {{{row.Str("STATUSNAME")}}}";
@@ -141,6 +139,7 @@ public static class ExploreTools
         "and structural area containers (building, floor, room, wall). " +
         "With 'status': filter by status type name (Existing / Planned / Removed – language-independent) " +
         "or by status name (exact match first, partial match as fallback). " +
+        "'Existing' also includes elements with no status set, since most existing things carry no explicit status. " +
         "Call list_statuses for available status names. " +
         "With 'under': restrict search to a sub-tree – more efficient and token-saving " +
         "than a global search. At least one of searchTerm, under, status, or category must be provided. " +
@@ -152,7 +151,7 @@ public static class ExploreTools
     public static string FindElement(
         [Description("Search term, e.g. 'socket'. Empty = all elements (only useful with under, status, or category).")] string searchTerm = "",
         [Description("Path filter: only elements below this path, e.g. 'House/FF' or 'House/GF/Office'.")] string under = "",
-        [Description("Status filter: 'Existing'/'Planned'/'Removed' for type-based filter; otherwise exact name match, partial match as fallback. Call list_statuses for names.")] string status = "",
+        [Description("Status filter: 'Existing'/'Planned'/'Removed' for type-based filter; otherwise exact name match, partial match as fallback. 'Existing' also includes elements with no status set. Call list_statuses for names.")] string status = "",
         [Description("Category filter: exact name or short name (e.g. 'Socket'), full path with '/' (e.g. 'Electrical/Lighting'). Partial match as fallback; if ambiguous, an error lists full paths. Includes all subcategories.")] string category = "",
         [Description("Also search in Purpose, Note, Description, UserManual, and Position. Default: false (name/path only).")] bool? searchAllFields = null)
     {
@@ -201,8 +200,8 @@ public static class ExploreTools
             }
             if (!string.IsNullOrEmpty(under))
             {
-                conditions.Add("UPPER(et.FULLNAME) LIKE UPPER(?)");
-                paramList.Add(under + "/%");
+                conditions.Add("UPPER(et.FULLNAME) LIKE UPPER(?) ESCAPE '\\'");
+                paramList.Add(FirebirdDb.EscapeLike(under) + "/%");
             }
             if (!string.IsNullOrEmpty(status))
             {
@@ -218,7 +217,12 @@ public static class ExploreTools
                 };
                 if (statusTypeFilter.HasValue)
                 {
-                    conditions.Add("s.\"StatusType\" = ?");
+                    // "Existing" (type 0) also matches records with no status set: a missing status
+                    // is the normal case for things that simply exist (ce."Status" IS NULL via LEFT JOIN).
+                    // Planned/Removed still require an explicit status.
+                    conditions.Add(statusTypeFilter.Value == 0
+                        ? "(ce.\"Status\" IS NULL OR s.\"StatusType\" = ?)"
+                        : "s.\"StatusType\" = ?");
                     paramList.Add(statusTypeFilter.Value);
                 }
                 else

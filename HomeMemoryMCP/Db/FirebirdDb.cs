@@ -134,6 +134,13 @@ public static class FirebirdDb
     public static long CountResult(List<Row> rows) =>
         Convert.ToInt64(rows.FirstOrDefault()?.GetValueOrDefault("CNT") ?? 0L);
 
+    /// <summary>
+    /// Escapes LIKE wildcards (<c>%</c>, <c>_</c>) and the escape char itself so a literal
+    /// substring matches literally. The SQL LIKE must declare <c>ESCAPE '\'</c> for this to take effect.
+    /// </summary>
+    public static string EscapeLike(string value) =>
+        value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+
     /// <summary>Null-safe string trimmer.</summary>
     public static string Str(object? val) => val switch
     {

@@ -349,6 +349,11 @@ public static class ElementTools
         if (string.IsNullOrEmpty(fullname))
             return "Error: 'fullname' is required.";
 
+        if (name == null && short_name == null && category == null && status == null
+            && purpose == null && note == null && description == null
+            && user_manual == null && position == null)
+            return "Error: provide at least one of name, short_name, category, status, purpose, note, description, user_manual, position.";
+
         short_name  = Validate.NormalizeClear(short_name);
         status      = Validate.NormalizeClear(status);
         purpose     = Validate.NormalizeClear(purpose);

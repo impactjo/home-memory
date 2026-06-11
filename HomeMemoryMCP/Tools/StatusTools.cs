@@ -25,7 +25,8 @@ public static class StatusTools
         "Status types: Existing (0), Planned (1), Removed (2). " +
         "Use status names from this list in create_element, update_element, create_connection, update_connection, find_element, and get_connections. " +
         "create/update tools require the exact status name (case-insensitive). " +
-        "find_element and get_connections also accept partial name matches and language-independent type keywords (Existing/Planned/Removed). " +
+        "find_element and get_connections also accept partial name matches and language-independent type keywords (Existing/Planned/Removed); " +
+        "the 'Existing' keyword additionally matches records with no status set. " +
         "If no suitable status exists, use create_status.")]
     public static string ListStatuses()
     {
@@ -81,7 +82,7 @@ public static class StatusTools
                 lines.Add($"    - {name}{detail}{noteStr}");
             }
 
-            lines.Add("\n  Use exact name (case-insensitive) in create/update_element and create/update_connection. find_element and get_connections also accept partial matches plus type keywords (Existing/Planned/Removed).");
+            lines.Add("\n  Use exact name (case-insensitive) in create/update_element and create/update_connection. find_element and get_connections also accept partial matches plus type keywords (Existing/Planned/Removed); 'Existing' additionally matches records with no status set.");
             return string.Join("\n", lines);
         }
         catch (Exception ex)

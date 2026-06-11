@@ -139,8 +139,8 @@ public static class CategoryTools
                 if (resolvedUnder is null)
                     return $"Error: element '{under}' not found. Call get_structure_overview or find_element to find the correct path.";
 
-                underClause = "AND UPPER(et.FULLNAME) LIKE UPPER(?)";
-                paramList.Add(resolvedUnder + "/%");
+                underClause = "AND UPPER(et.FULLNAME) LIKE UPPER(?) ESCAPE '\\'";
+                paramList.Add(FirebirdDb.EscapeLike(resolvedUnder) + "/%");
             }
 
             var allRows = FirebirdDb.ExecuteQuery(conn, $"""

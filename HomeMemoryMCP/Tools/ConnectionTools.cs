@@ -26,6 +26,7 @@ public static class ConnectionTools
         "useful when a keyword appears in a field other than the connection name. " +
         "With status: filter by status type name (Existing / Planned / Removed – language-independent) " +
         "or by status name (exact match first, partial match as fallback). " +
+        "'Existing' also includes connections with no status set, since most existing things carry no explicit status. " +
         "Returns up to 100 connections; refine with category, under, searchTerm, or status for complete results. " +
         "Connections with status Planned or Removed are marked with their status name. " +
         "Note: conduit/cable endpoints may also be documented as elements – " +
@@ -35,7 +36,7 @@ public static class ConnectionTools
         [Description("Spatial filter: connections whose source or destination is under this path.")] string under = "",
         [Description("Filter by connection name (partial match, case-insensitive), e.g. 'conduit' or 'leerrohr'.")] string searchTerm = "",
         [Description("Also search in Route, Purpose, Note, Description, and UserManual. Default: false (name only).")] bool? searchAllFields = null,
-        [Description("Filter by status type name (Existing / Planned / Removed) or status name. Call list_statuses for options.")] string status = "")
+        [Description("Filter by status type name (Existing / Planned / Removed) or status name. 'Existing' also includes connections with no status set. Call list_statuses for options.")] string status = "")
     {
         category   = category.Trim();
         under      = under.Trim().TrimEnd('/');
@@ -114,7 +115,12 @@ public static class ConnectionTools
                 };
                 if (statusTypeFilter.HasValue)
                 {
-                    sql.Append(" AND s.\"StatusType\" = ?");
+                    // "Existing" (type 0) also matches connections with no status set: a missing status
+                    // is the normal case for things that simply exist (ce."Status" IS NULL via LEFT JOIN).
+                    // Planned/Removed still require an explicit status.
+                    sql.Append(statusTypeFilter.Value == 0
+                        ? " AND (ce.\"Status\" IS NULL OR s.\"StatusType\" = ?)"
+                        : " AND s.\"StatusType\" = ?");
                     paramList.Add(statusTypeFilter.Value);
                 }
                 else
@@ -520,6 +526,12 @@ public static class ConnectionTools
         name = name?.Trim() ?? "";
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required to identify the connection.";
+
+        // source/destination only narrow the lookup; they are not updates. Require at least one real change.
+        if (new_name == null && category == null && new_source == null && new_destination == null
+            && route == null && length == null && status == null && purpose == null
+            && note == null && description == null && user_manual == null)
+            return "Error: provide at least one of new_name, category, new_source, new_destination, route, length, status, purpose, note, description, user_manual.";
 
         source = string.IsNullOrWhiteSpace(source) ? null : QueryHelpers.NormalizePath(source);
         destination = string.IsNullOrWhiteSpace(destination) ? null : QueryHelpers.NormalizePath(destination);
