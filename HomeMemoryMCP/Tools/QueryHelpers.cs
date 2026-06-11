@@ -37,6 +37,22 @@ internal static class QueryHelpers
         => path.Trim().TrimEnd('/');
 
     /// <summary>
+    /// Applies a CLEAR-aware text update to a single CEntity column inside an open transaction.
+    /// No-op when <paramref name="value"/> is null (field not provided); "CLEAR" sets the column
+    /// to NULL; any other value is trimmed and written.
+    /// IMPORTANT: <paramref name="column"/> is interpolated into the SQL — pass only fixed,
+    /// code-controlled column names (e.g. "Purpose"), never user input.
+    /// </summary>
+    internal static void SetCEntityField(
+        FbConnection conn, FbTransaction txn, string oid, string column, string? value)
+    {
+        if (value == null) return;
+        FirebirdDb.ExecuteNonQuery(conn, txn,
+            $"""UPDATE "CEntity" SET "{column}" = ? WHERE "Oid" = ?""",
+            value == "CLEAR" ? DBNull.Value : (object)value.Trim(), oid);
+    }
+
+    /// <summary>
     /// Splits a full element path into (parent, name).
     /// The parent segment includes the trailing slash, e.g. "House/GF/" and "Kitchen".
     /// Returns ("", fullname) for top-level elements.

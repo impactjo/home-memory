@@ -146,6 +146,14 @@ public static class FirebirdDb
     public static string Str(this Row row, string key) =>
         Str(row.GetValueOrDefault(key));
 
+    /// <summary>Null-safe long accessor for a Row; null/DBNull becomes 0.</summary>
+    public static long Long(this Row row, string key) =>
+        row.GetValueOrDefault(key) is { } v and not DBNull ? Convert.ToInt64(v) : 0L;
+
+    /// <summary>Null-safe int accessor for a Row; null/DBNull becomes 0.</summary>
+    public static int Int(this Row row, string key) =>
+        row.GetValueOrDefault(key) is { } v and not DBNull ? Convert.ToInt32(v) : 0;
+
     /// <summary>
     /// Begins a transaction, invokes <paramref name="body"/>, commits on success, rolls back on failure.
     /// </summary>

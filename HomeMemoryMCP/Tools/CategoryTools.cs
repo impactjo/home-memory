@@ -59,17 +59,17 @@ public static class CategoryTools
             var lines = new List<string> { "Object categories:\n" };
             foreach (var r in rows)
             {
-                int depth  = Convert.ToInt32(r.GetValueOrDefault("CAT_DEPTH") ?? 0);
+                int depth  = r.Int("CAT_DEPTH");
                 var indent = new string(' ', depth * 2);
                 var icon   = depth > 0 ? "+-" : "-";
                 var name   = r.Str("Name");
                 var sn     = r.Str("ShortName");
                 var label  = !string.IsNullOrEmpty(sn) && sn != name ? $"{name} ({sn})" : name;
                 bool isStructuralArea = FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"));
-                long e  = Convert.ToInt64(r.GetValueOrDefault("ELEM_COUNT") ?? 0L);
-                long c  = Convert.ToInt64(r.GetValueOrDefault("CONN_COUNT") ?? 0L);
-                long pt = Convert.ToInt64(r.GetValueOrDefault("PT_COUNT")   ?? 0L);
-                long ci = Convert.ToInt64(r.GetValueOrDefault("CI_COUNT")   ?? 0L);
+                long e  = r.Long("ELEM_COUNT");
+                long c  = r.Long("CONN_COUNT");
+                long pt = r.Long("PT_COUNT");
+                long ci = r.Long("CI_COUNT");
                 long ot = ci - e - c - pt;
                 var parts = new List<string>();
                 if (e  > 0) parts.Add($"{e} elem.");
@@ -266,10 +266,10 @@ public static class CategoryTools
                 LEFT JOIN "PartType"   pt ON pt."Oid" = ci."Oid"
                 WHERE ci."Category" = ?
                 """, catOid);
-            var elemCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("ELEM_COUNT") ?? 0L);
-            var connCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("CONN_COUNT") ?? 0L);
-            var ptCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("PT_COUNT")   ?? 0L);
-            var ciCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("CI_COUNT")   ?? 0L);
+            var elemCount  = usageRows[0].Long("ELEM_COUNT");
+            var connCount  = usageRows[0].Long("CONN_COUNT");
+            var ptCount    = usageRows[0].Long("PT_COUNT");
+            var ciCount    = usageRows[0].Long("CI_COUNT");
             var otherCount = ciCount - elemCount - connCount - ptCount;
 
             var childRows = FirebirdDb.ExecuteQuery(conn,
@@ -491,8 +491,8 @@ public static class CategoryTools
                 conn, oid, description, note, purpose, user_manual);
 
             var now = DateTime.UtcNow;
-            using var txn = conn.BeginTransaction();
-            try
+            var newIsArea = is_structural_area;
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     UPDATE "CEntity" SET
@@ -514,27 +514,11 @@ public static class CategoryTools
                     (object?)effectiveParentOid ?? DBNull.Value,
                     oid);
 
-                if (purpose != null)
-                    FirebirdDb.ExecuteNonQuery(conn, txn,
-                        """UPDATE "CEntity" SET "Purpose" = ? WHERE "Oid" = ?""",
-                        purpose == "CLEAR" ? DBNull.Value : (object)purpose.Trim(), oid);
+                QueryHelpers.SetCEntityField(conn, txn, oid, "Purpose",     purpose);
+                QueryHelpers.SetCEntityField(conn, txn, oid, "Note",        note);
+                QueryHelpers.SetCEntityField(conn, txn, oid, "Description", description);
+                QueryHelpers.SetCEntityField(conn, txn, oid, "UserManual",  user_manual);
 
-                if (note != null)
-                    FirebirdDb.ExecuteNonQuery(conn, txn,
-                        """UPDATE "CEntity" SET "Note" = ? WHERE "Oid" = ?""",
-                        note == "CLEAR" ? DBNull.Value : (object)note.Trim(), oid);
-
-                if (description != null)
-                    FirebirdDb.ExecuteNonQuery(conn, txn,
-                        """UPDATE "CEntity" SET "Description" = ? WHERE "Oid" = ?""",
-                        description == "CLEAR" ? DBNull.Value : (object)description.Trim(), oid);
-
-                if (user_manual != null)
-                    FirebirdDb.ExecuteNonQuery(conn, txn,
-                        """UPDATE "CEntity" SET "UserManual" = ? WHERE "Oid" = ?""",
-                        user_manual == "CLEAR" ? DBNull.Value : (object)user_manual.Trim(), oid);
-
-                var newIsArea = is_structural_area;
                 if (newIsArea.HasValue)
                 {
                     FirebirdDb.ExecuteNonQuery(conn, txn, """
@@ -545,8 +529,6 @@ public static class CategoryTools
                         newIsArea.Value,
                         oid);
                 }
-
-                txn.Commit();
 
                 var changes = new List<string>();
                 if (new_name != null)       changes.Add($"name → '{effectiveName}'");
@@ -563,12 +545,7 @@ public static class CategoryTools
                 foreach (var adv in overwriteAdvisories)
                     result += $"\n  Advisory: {adv}.";
                 return result;
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -681,8 +658,7 @@ public static class CategoryTools
             var oid = Guid.NewGuid().ToString("D");
             var now = DateTime.UtcNow;
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 // CEntity: base row (no CItem/Part for categories)
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
@@ -706,14 +682,8 @@ public static class CategoryTools
                     isArea,
                     (object?)parentOid  ?? DBNull.Value);
 
-                txn.Commit();
                 return $"✓ Category '{newFullName}' created (OID: {oid}).";
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -777,10 +747,10 @@ public static class CategoryTools
                 LEFT JOIN "PartType"   pt ON pt."Oid" = ci."Oid"
                 WHERE ci."Category" = ?
                 """, oid);
-            var elemCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("ELEM_COUNT") ?? 0L);
-            var connCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("CONN_COUNT") ?? 0L);
-            var ptCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("PT_COUNT")   ?? 0L);
-            var ciCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("CI_COUNT")   ?? 0L);
+            var elemCount  = usageRows[0].Long("ELEM_COUNT");
+            var connCount  = usageRows[0].Long("CONN_COUNT");
+            var ptCount    = usageRows[0].Long("PT_COUNT");
+            var ciCount    = usageRows[0].Long("CI_COUNT");
             var otherCount = ciCount - elemCount - connCount - ptCount;
 
             if (ciCount > 0)
@@ -803,8 +773,7 @@ public static class CategoryTools
                        string.Join("; ", hints) + ".";
             }
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 // Delete Category row first (FK to CEntity.Oid), then the CEntity base row
                 FirebirdDb.ExecuteNonQuery(conn, txn,
@@ -812,14 +781,8 @@ public static class CategoryTools
                 FirebirdDb.ExecuteNonQuery(conn, txn,
                     """DELETE FROM "CEntity" WHERE "Oid" = ?""", oid);
 
-                txn.Commit();
                 return $"✓ Category '{category}' deleted.";
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {

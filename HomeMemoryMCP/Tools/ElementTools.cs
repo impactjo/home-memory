@@ -474,25 +474,10 @@ public static class ElementTools
                         """UPDATE "CEntity" SET "Status" = ? WHERE "Oid" = ?""",
                         status == "CLEAR" ? DBNull.Value : (object)statusOid!, oid);
 
-                if (purpose != null)
-                    FirebirdDb.ExecuteNonQuery(conn, txn,
-                        """UPDATE "CEntity" SET "Purpose" = ? WHERE "Oid" = ?""",
-                        purpose == "CLEAR" ? DBNull.Value : (object)purpose.Trim(), oid);
-
-                if (note != null)
-                    FirebirdDb.ExecuteNonQuery(conn, txn,
-                        """UPDATE "CEntity" SET "Note" = ? WHERE "Oid" = ?""",
-                        note == "CLEAR" ? DBNull.Value : (object)note.Trim(), oid);
-
-                if (description != null)
-                    FirebirdDb.ExecuteNonQuery(conn, txn,
-                        """UPDATE "CEntity" SET "Description" = ? WHERE "Oid" = ?""",
-                        description == "CLEAR" ? DBNull.Value : (object)description.Trim(), oid);
-
-                if (user_manual != null)
-                    FirebirdDb.ExecuteNonQuery(conn, txn,
-                        """UPDATE "CEntity" SET "UserManual" = ? WHERE "Oid" = ?""",
-                        user_manual == "CLEAR" ? DBNull.Value : (object)user_manual.Trim(), oid);
+                QueryHelpers.SetCEntityField(conn, txn, oid, "Purpose",     purpose);
+                QueryHelpers.SetCEntityField(conn, txn, oid, "Note",        note);
+                QueryHelpers.SetCEntityField(conn, txn, oid, "Description", description);
+                QueryHelpers.SetCEntityField(conn, txn, oid, "UserManual",  user_manual);
 
                 if (updateCategory)
                     FirebirdDb.ExecuteNonQuery(conn, txn,

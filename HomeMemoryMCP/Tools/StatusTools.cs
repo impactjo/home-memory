@@ -56,7 +56,7 @@ public static class StatusTools
             int? currentType = null;
             foreach (var row in rows)
             {
-                var sType = Convert.ToInt32(row.GetValueOrDefault("StatusType") ?? 0);
+                var sType = row.Int("StatusType");
                 if (sType != currentType)
                 {
                     lines.Add($"\n  {StatusTypeName(sType)} (type {sType}):");
@@ -65,10 +65,10 @@ public static class StatusTools
 
                 var name       = row.Str("Name");
                 var note       = row.Str("Note");
-                var elemCount  = Convert.ToInt64(row.GetValueOrDefault("ELEM_COUNT") ?? 0L);
-                var connCount  = Convert.ToInt64(row.GetValueOrDefault("CONN_COUNT") ?? 0L);
-                var ptCount    = Convert.ToInt64(row.GetValueOrDefault("PT_COUNT")   ?? 0L);
-                var ceCount    = Convert.ToInt64(row.GetValueOrDefault("CE_COUNT")   ?? 0L);
+                var elemCount  = row.Long("ELEM_COUNT");
+                var connCount  = row.Long("CONN_COUNT");
+                var ptCount    = row.Long("PT_COUNT");
+                var ceCount    = row.Long("CE_COUNT");
                 var otherCount = ceCount - elemCount - connCount - ptCount;
 
                 var parts = new List<string>();
@@ -160,7 +160,7 @@ public static class StatusTools
 
             var row         = findRows[0];
             var oid         = row.Str("Oid");
-            var currentST   = Convert.ToInt32(row.GetValueOrDefault("StatusType") ?? 0);
+            var currentST   = row.Int("StatusType");
             var currentNote = row.Str("Note");
 
             // Effective values
@@ -184,8 +184,7 @@ public static class StatusTools
                     return $"Error: a status named '{effectiveName}' already exists.";
             }
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     UPDATE "Status"
@@ -200,20 +199,13 @@ public static class StatusTools
                     (object?)effectiveNote ?? DBNull.Value,
                     oid);
 
-                txn.Commit();
-
                 var changes = new List<string>();
                 if (new_name != null)        changes.Add($"name → '{effectiveName}'");
                 if (new_status_type != null) changes.Add($"type → {StatusTypeName(effectiveST)}");
                 if (note != null)            changes.Add(clearNote ? "note → (removed)" : "note updated");
 
                 return $"✓ Status '{name}' updated: {string.Join(", ", changes)}.";
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -272,8 +264,7 @@ public static class StatusTools
 
             var oid = Guid.NewGuid().ToString("D");
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     INSERT INTO "Status" ("Oid", "OptimisticLockField", "StatusType", "Name", "Note")
@@ -282,14 +273,8 @@ public static class StatusTools
                     oid, statusTypeInt, name,
                     (object?)note?.Trim() ?? DBNull.Value);
 
-                txn.Commit();
                 return $"✓ Status '{name}' created (type: {StatusTypeName(statusTypeInt)}, OID: {oid}).";
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -337,10 +322,10 @@ public static class StatusTools
                 LEFT JOIN "PartType"   pt ON pt."Oid" = ce."Oid"
                 WHERE ce."Status" = ?
                 """, oid);
-            var elemCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("ELEM_COUNT") ?? 0L);
-            var connCount  = Convert.ToInt64(usageRows[0].GetValueOrDefault("CONN_COUNT") ?? 0L);
-            var ptCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("PT_COUNT")   ?? 0L);
-            var ceCount    = Convert.ToInt64(usageRows[0].GetValueOrDefault("CE_COUNT")   ?? 0L);
+            var elemCount  = usageRows[0].Long("ELEM_COUNT");
+            var connCount  = usageRows[0].Long("CONN_COUNT");
+            var ptCount    = usageRows[0].Long("PT_COUNT");
+            var ceCount    = usageRows[0].Long("CE_COUNT");
             var otherCount = ceCount - elemCount - connCount - ptCount;
 
             if (ceCount > 0)
@@ -362,20 +347,13 @@ public static class StatusTools
                        string.Join("; ", hints) + ".";
             }
 
-            using var txn = conn.BeginTransaction();
-            try
+            return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn,
                     """DELETE FROM "Status" WHERE "Oid" = ?""", oid);
 
-                txn.Commit();
                 return $"✓ Status '{name}' deleted.";
-            }
-            catch
-            {
-                txn.Rollback();
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
