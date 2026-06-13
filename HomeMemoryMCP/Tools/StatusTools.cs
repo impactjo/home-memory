@@ -139,8 +139,8 @@ public static class StatusTools
                 return "Error: 'new_status_type' must be 'existing', 'planned', or 'removed'.";
         }
 
-        bool clearNote = note?.Trim().Equals("CLEAR", StringComparison.OrdinalIgnoreCase) == true;
-
+        note = Validate.NormalizeClear(note);
+        bool clearNote = note == "CLEAR";
         note = Validate.NormalizeSingleline(note);
 
         // Field length validation
@@ -206,7 +206,7 @@ public static class StatusTools
                 if (new_status_type != null) changes.Add($"type → {StatusTypeName(effectiveST)}");
                 if (note != null)            changes.Add(clearNote ? "note → (removed)" : "note updated");
 
-                return $"✓ Status '{name}' updated: {string.Join(", ", changes)}.";
+                return $"✓ Status '{effectiveName}' updated: {string.Join(", ", changes)}.";
             });
         }
         catch (Exception ex)

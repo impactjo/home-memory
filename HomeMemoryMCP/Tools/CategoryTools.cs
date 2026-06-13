@@ -402,6 +402,7 @@ public static class CategoryTools
                 return $"Error: category '{category}' not found. Call list_categories to see available categories.";
 
             var oid         = catRow.Str("Oid");
+            var canonicalCategory = catRow.Str("CAT_FULLNAME");
             var currentName = catRow.Str("Name");
             var currentSN   = catRow.Str("ShortName");
 
@@ -543,7 +544,7 @@ public static class CategoryTools
                 if (clearParent || (new_parent != null && new_parent != "CLEAR"))
                     changes.Add(effectiveParentOid == null ? "parent → (top-level)" : $"parent → '{new_parent}'");
 
-                var result = $"✓ Category '{category}' updated: {string.Join(", ", changes)}.";
+                var result = $"✓ Category '{canonicalCategory}' updated: {string.Join(", ", changes)}.";
                 foreach (var adv in overwriteAdvisories)
                     result += $"\n  Advisory: {adv}.";
                 return result;

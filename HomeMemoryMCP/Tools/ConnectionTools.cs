@@ -533,22 +533,24 @@ public static class ConnectionTools
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required to identify the connection.";
 
-        // source/destination only narrow the lookup; they are not updates. Require at least one real change.
-        if (new_name == null && category == null && new_source == null && new_destination == null
-            && route == null && length == null && status == null && purpose == null
-            && note == null && description == null && user_manual == null)
-            return "Error: provide at least one of new_name, category, new_source, new_destination, route, length, status, purpose, note, description, user_manual.";
-
         source = string.IsNullOrWhiteSpace(source) ? null : QueryHelpers.NormalizePath(source);
         destination = string.IsNullOrWhiteSpace(destination) ? null : QueryHelpers.NormalizePath(destination);
+        new_source = string.IsNullOrWhiteSpace(new_source) ? null : QueryHelpers.NormalizePath(new_source);
+        new_destination = string.IsNullOrWhiteSpace(new_destination) ? null : QueryHelpers.NormalizePath(new_destination);
 
         route       = Validate.NormalizeClear(route);
-        length      = Validate.NormalizeClear(length);
+        length      = string.IsNullOrWhiteSpace(length) ? null : Validate.NormalizeClear(length);
         status      = Validate.NormalizeClear(status);
         purpose     = Validate.NormalizeClear(purpose);
         note        = Validate.NormalizeClear(note);
         description = Validate.NormalizeClear(description);
         user_manual = Validate.NormalizeClear(user_manual);
+
+        // source/destination only narrow the lookup; they are not updates. Require at least one real change.
+        if (new_name == null && category == null && new_source == null && new_destination == null
+            && route == null && length == null && status == null && purpose == null
+            && note == null && description == null && user_manual == null)
+            return "Error: provide at least one of new_name, category, new_source, new_destination, route, length, status, purpose, note, description, user_manual.";
 
         route       = Validate.NormalizeMultiline(route);
         purpose     = Validate.NormalizeSingleline(purpose);
@@ -611,6 +613,16 @@ public static class ConnectionTools
             var oid = matches[0].Str("Oid");
             var now = DateTime.UtcNow;
 
+            var curConnRows = FirebirdDb.ExecuteQuery(conn, """
+                SELECT c."Name", c."Source", c."Destination", ci."Category"
+                FROM "Connection" c
+                JOIN "CItem" ci ON ci."Oid" = c."Oid"
+                WHERE c."Oid" = ?
+                """, oid);
+            if (curConnRows.Count == 0)
+                return "Error: connection data not found.";
+            var curConn = curConnRows[0];
+
             string? categoryOid = null;
             bool updateCategory = false;
             if (category != null)
@@ -646,22 +658,12 @@ public static class ConnectionTools
             bool needsCombCheck = new_name != null || updateCategory || newSrcOid != null || newDstOid != null;
             if (needsCombCheck)
             {
-                var curConnRows = FirebirdDb.ExecuteQuery(conn, """
-                    SELECT c."Name", c."Source", c."Destination", ci."Category"
-                    FROM "Connection" c
-                    JOIN "CItem" ci ON ci."Oid" = c."Oid"
-                    WHERE c."Oid" = ?
-                    """, oid);
-                if (curConnRows.Count > 0)
-                {
-                    var cur       = curConnRows[0];
-                    var checkName = new_name    ?? cur.Str("Name");
-                    var checkCat  = categoryOid ?? cur.Str("Category");
-                    var checkSrc  = newSrcOid   ?? cur.Str("Source");
-                    var checkDst  = newDstOid   ?? cur.Str("Destination");
-                    var combError = QueryHelpers.CheckConnectionCombinationUniqueness(conn, checkName, checkCat, checkSrc, checkDst, oid);
-                    if (combError != null) return combError;
-                }
+                var checkName = new_name    ?? curConn.Str("Name");
+                var checkCat  = categoryOid ?? curConn.Str("Category");
+                var checkSrc  = newSrcOid   ?? curConn.Str("Source");
+                var checkDst  = newDstOid   ?? curConn.Str("Destination");
+                var combError = QueryHelpers.CheckConnectionCombinationUniqueness(conn, checkName, checkCat, checkSrc, checkDst, oid);
+                if (combError != null) return combError;
             }
 
             decimal? newLength  = null;
@@ -746,7 +748,7 @@ public static class ConnectionTools
                         """UPDATE "CEntity" SET "Status" = ? WHERE "Oid" = ?""",
                         status == "CLEAR" ? DBNull.Value : (object)statusOid!, oid);
 
-                var displayName = new_name ?? name;
+                var displayName = new_name ?? curConn.Str("Name");
                 var result = $"✓ Connection '{displayName}' updated.";
                 foreach (var adv in overwriteAdvisories)
                     result += $"\n  Advisory: {adv}.";

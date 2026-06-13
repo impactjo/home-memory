@@ -641,10 +641,14 @@ public static class ElementTools
                 return $"Error: an element with full name '{newFullName}' already exists.";
 
             var elemRows = FirebirdDb.ExecuteQuery(conn,
-                """SELECT "Name", "ShortName" FROM "Element" WHERE "Oid" = ?""", oid);
+                """SELECT "Name", "ShortName", "PartOfElement" FROM "Element" WHERE "Oid" = ?""", oid);
             if (elemRows.Count == 0) return "Error: element data not found.";
             var elemName      = elemRows[0].Str("Name");
             var elemShortName = elemRows[0].Str("ShortName").NullIfEmpty();
+            var currentParentOid = elemRows[0].Str("PartOfElement").NullIfEmpty();
+
+            if (string.Equals(FirebirdDb.OidKey(currentParentOid), FirebirdDb.OidKey(newParentOid), StringComparison.OrdinalIgnoreCase))
+                return $"✓ Element '{fullname}' already has the requested parent.";
 
             var siblingError = QueryHelpers.CheckSiblingUniqueness(conn, elemName, elemShortName, newParentOid, oid);
             if (siblingError != null) return siblingError;
