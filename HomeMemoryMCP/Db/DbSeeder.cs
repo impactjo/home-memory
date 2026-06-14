@@ -91,7 +91,7 @@ public static class DbSeeder
             oid,
             cat.Name,
             cat.ShortName ?? (object)DBNull.Value,
-            cat.IsStructuralArea,
+            cat.IsPrimaryArea,
             parentOid ?? (object)DBNull.Value);
 
         foreach (var child in cat.Children ?? [])
@@ -194,7 +194,7 @@ public static class DbSeeder
     private record CategorySeed(
         string Name,
         string? ShortName,
-        bool IsStructuralArea,
+        bool IsPrimaryArea,
         CategorySeed[]? Children);
 
     private record ElementSeed(

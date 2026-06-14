@@ -44,7 +44,7 @@ public static class CategoryTools
         "and connections (physical lines: pipes, cables, ducts). " +
         "IMPORTANT: Call this before create_element or create_connection to pick the right category. " +
         "If no suitable category exists, use create_category first. " +
-        "Structural area categories (Building, Floor, Room, ...) are marked with [structural area]. " +
+        "Primary area categories (Building, Floor, Room, ...) are marked with [primary area]. " +
         "When a category has a short name, its path segment uses that short name " +
         "(e.g. short name 'PV' → path 'PV', not 'Photovoltaics'). " +
         "The exact path to use in update_category and delete_category is shown as [path: ...] " +
@@ -65,7 +65,7 @@ public static class CategoryTools
                 var name   = r.Str("Name");
                 var sn     = r.Str("ShortName");
                 var label  = !string.IsNullOrEmpty(sn) && sn != name ? $"{name} ({sn})" : name;
-                bool isStructuralArea = FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"));
+                bool isPrimaryArea = FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"));
                 long e  = r.Long("ELEM_COUNT");
                 long c  = r.Long("CONN_COUNT");
                 long pt = r.Long("PT_COUNT");
@@ -83,7 +83,7 @@ public static class CategoryTools
                 if (!string.IsNullOrEmpty(r.Str("Description"))) flagParts.Add("i");
                 if (!string.IsNullOrEmpty(r.Str("UserManual")))  flagParts.Add("u");
                 var flags = flagParts.Count > 0 ? $"  [{string.Join("", flagParts)}]" : "";
-                var areaFlag = isStructuralArea ? "  [structural area]" : "";
+                var areaFlag = isPrimaryArea ? "  [primary area]" : "";
                 // Show explicit path when ShortName changes the path segment (prevents copy-paste errors)
                 var catFullname = r.Str("CAT_FULLNAME");
                 var pathHint = !string.IsNullOrEmpty(sn) && sn != name
@@ -203,7 +203,7 @@ public static class CategoryTools
 
     [McpServerTool(Name = "get_category_details")]
     [Description(
-        "Full details of a single object category: path, parent, structural-area flag, " +
+        "Full details of a single object category: path, parent, primary area flag, " +
         "item counts (elements, connections, part types, other), purpose, note, description, and user manual. " +
         "Identify by full path (e.g. 'Electrical/Cable') or by name/short name when unambiguous. " +
         "update_category requires calling this first before modifying purpose, note, description, or user_manual.")]
@@ -281,7 +281,7 @@ public static class CategoryTools
             if (!string.IsNullOrEmpty(sn) && sn != name)
                 lines.Add($"  Short name       : {sn}");
             lines.Add($"  Parent           : {parentPath ?? "(top-level)"}");
-            lines.Add($"  Structural area  : {(isArea ? "yes" : "no")}");
+            lines.Add($"  Primary area     : {(isArea ? "yes" : "no")}");
 
             var countParts = new List<string>();
             if (elemCount  > 0) countParts.Add($"{elemCount} element{(elemCount == 1 ? "" : "s")}");
@@ -312,11 +312,11 @@ public static class CategoryTools
 
     [McpServerTool(Name = "update_category")]
     [Description(
-        "Updates an existing object category: rename, change short name, description, structural area flag, or move to a different parent. " +
+        "Updates an existing object category: rename, change short name, description, primary area flag, or move to a different parent. " +
         "Required: category (current full path, e.g. 'Electrical/Lighting'). " +
         "Optional: new_name, new_short_name (CLEAR to remove), purpose (CLEAR to remove), note (CLEAR to remove), " +
         "description (CLEAR to remove), user_manual (CLEAR to remove), " +
-        "is_structural_area ('true' or 'false'), " +
+        "is_primary_area ('true' or 'false'), " +
         "new_parent (full category path, e.g. 'Electrical'; CLEAR to move to top-level). " +
         "At least one optional field must be provided. " +
         "IMPORTANT: ALWAYS call get_category_details before updating purpose, note, description, or user_manual. " +
@@ -333,7 +333,7 @@ public static class CategoryTools
         [Description("Short temporary planning note ('CLEAR' to remove). For permanent technical info use description instead.")] string? note = null,
         [Description("Permanent technical info about this category itself, e.g. trade scope, conventions, references (optional, multiline, 4000 chars). Category-level only – not for individual items in this category. Use 'CLEAR' to remove.")] string? description = null,
         [Description("Documentation guide for this category, e.g. 'how to document items of this trade' ('CLEAR' to remove).")] string? user_manual = null,
-        [Description("Set to true to mark as structural area (navigable container like Room/Floor), false to unmark.")] bool? is_structural_area = null,
+        [Description("Set to true to mark as a primary area, false to unmark. Primary areas are the main location containers shown in the default structure overview (e.g. Building, Floor, Room, Garage, Outdoor Area); surface/detail zones like Wall Area or Ceiling Area are not primary areas.")] bool? is_primary_area = null,
         [Description("New parent category full path (optional). Use 'CLEAR' to move to top-level.")] string? new_parent = null)
     {
         category = category?.Trim() ?? "";
@@ -342,8 +342,8 @@ public static class CategoryTools
 
         if (new_name == null && new_short_name == null && purpose == null && note == null
             && description == null && user_manual == null
-            && is_structural_area == null && new_parent == null)
-            return "Error: provide at least one of new_name, new_short_name, purpose, note, description, user_manual, is_structural_area, new_parent.";
+            && is_primary_area == null && new_parent == null)
+            return "Error: provide at least one of new_name, new_short_name, purpose, note, description, user_manual, is_primary_area, new_parent.";
 
         // Validate new_name
         if (new_name != null)
@@ -494,7 +494,7 @@ public static class CategoryTools
                 conn, oid, description, note, purpose, user_manual);
 
             var now = DateTime.UtcNow;
-            var newIsArea = is_structural_area;
+            var newIsArea = is_primary_area;
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
@@ -540,7 +540,7 @@ public static class CategoryTools
                 if (note != null)           changes.Add(note == "CLEAR" ? "note → (removed)" : "note updated");
                 if (description != null)    changes.Add(description == "CLEAR" ? "description → (removed)" : "description updated");
                 if (user_manual != null)    changes.Add(user_manual == "CLEAR" ? "user_manual → (removed)" : "user_manual updated");
-                if (newIsArea.HasValue)     changes.Add($"is_structural_area → {newIsArea.Value.ToString().ToLower()}");
+                if (newIsArea.HasValue)     changes.Add($"is_primary_area → {newIsArea.Value.ToString().ToLower()}");
                 if (clearParent || (new_parent != null && new_parent != "CLEAR"))
                     changes.Add(effectiveParentOid == null ? "parent → (top-level)" : $"parent → '{new_parent}'");
 
@@ -563,8 +563,8 @@ public static class CategoryTools
         "Creates a new object category. Use this when no suitable category exists for a new element or connection. " +
         "Required: name. Optional: parent (full category path, e.g. 'Electrical'), " +
         "short_name, purpose, note, description, user_manual, " +
-        "is_structural_area (default false – structural area categories are " +
-        "navigable building containers like Room/Floor, not trades or surface zones). " +
+        "is_primary_area (default false – primary areas are the main location containers " +
+        "shown in the default structure overview, like Building/Floor/Room, not trades or surface zones). " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); documentation guide for this category -> user_manual (multiline, 4000 chars). " +
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab. " +
         "After creating, use the returned category path in create_element or create_connection.")]
@@ -576,7 +576,7 @@ public static class CategoryTools
         [Description("Short temporary planning note (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
         [Description("Permanent technical info about this category itself, e.g. trade scope, conventions, references (optional, multiline, 4000 chars). Category-level only – not for individual items in this category. Only fill with information the user explicitly provided.")] string? description = null,
         [Description("Documentation guide for this category, e.g. 'how to document items of this trade' (optional). Only fill with information the user explicitly provided.")] string? user_manual = null,
-        [Description("Set to true for structural area categories (Building, Floor, Room). Omit or set to false (default) for trade/device categories or surface zones (Wall Section, Ceiling Section).")] bool? is_structural_area = null)
+        [Description("Set to true for primary area categories (Building, Floor, Room, Garage, Outdoor Area) shown in the default structure overview. Omit or set to false (default) for trade/device categories or surface/detail zones (Wall Area, Ceiling Area).")] bool? is_primary_area = null)
     {
         name = Validate.NormalizeSingleline(name)?.Trim() ?? "";
         if (string.IsNullOrEmpty(name))
@@ -602,7 +602,7 @@ public static class CategoryTools
                   ?? Validate.Length(user_manual?.Trim(), "user_manual", 4000);
         if (lenErr != null) return lenErr;
 
-        var isArea = is_structural_area ?? false;
+        var isArea = is_primary_area ?? false;
 
         try
         {

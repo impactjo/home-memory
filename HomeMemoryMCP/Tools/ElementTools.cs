@@ -17,7 +17,7 @@ public static class ElementTools
         "and all incoming and outgoing connections (physical lines: pipes, cables, ducts). " +
         "Use when the exact path is known and you need details or connections. " +
         "An element is any physical item in the building: installed equipment, appliance, " +
-        "furniture, fixture, tool, or structural container (room, floor, etc.).")]
+        "furniture, fixture, tool, or location container (room, floor, etc.).")]
     public static string GetElementDetails(
         [Description("Full name path, e.g. 'House/GF/Kitchen/South-Wall/Socket'")] string fullname)
     {
@@ -184,9 +184,9 @@ public static class ElementTools
     [Description(
         "Creates a new element. An element is any physical item in the building: " +
         "installed equipment (socket, boiler, radiator, circuit breaker), appliances (washing machine, fridge), " +
-        "furniture (sofa, wardrobe), fixtures, tools, or structural area containers (room, wall, floor). " +
-        "Structural area elements (room, floor, ceiling, outdoor area, garage, etc.) are also created with this tool – " +
-        "simply choose a category marked [structural area] in list_categories (is_structural_area=true). " +
+        "furniture (sofa, wardrobe), fixtures, tools, or location containers (room, floor, garage, outdoor area, wall area). " +
+        "Primary area elements (the main location containers shown in the default structure overview, e.g. room, floor, garage, outdoor area) are also created with this tool – " +
+        "simply choose a category marked [primary area] in list_categories (is_primary_area=true). " +
         "Required fields: name, category. " +
         "IMPORTANT – category workflow: call list_categories first to find the best matching category " +
         "by name or context (e.g. 'Heating' for a boiler, 'Electrical' for a socket, 'Room' for a room). " +
@@ -202,7 +202,7 @@ public static class ElementTools
         [Description("Concise name for the element, typically the object/function type, e.g. 'Socket left', 'Boiler', 'Sofa'. Brand, model, dimensions, and purchase details usually do not belong in the name; put them in description when no other field already covers them. Keep brand/model in the name only when they are the common identifier, e.g. 'Hue Bridge'. Keep a short sibling differentiator such as 'left'/'right' or a number when siblings would otherwise be ambiguous.")] string name,
         [Description("Object category: name, short name, or full path (e.g. 'Electrical', 'Heating', 'Furniture', or 'Electrical/Cable' when the name is ambiguous). Required!")] string category,
         [Description("Full path of the parent element, e.g. 'House/GF/Kitchen/South-Wall'. Empty = top-level.")] string? parent = null,
-        [Description("Optional concise path segment, mainly for structural containers (e.g. 'W-SW' for 'West-Southwest Wall'). Must be unique among siblings; omit when it would be the same as name.")] string? short_name = null,
+        [Description("Optional concise path segment, mainly for location containers (e.g. 'W-SW' for 'West-Southwest Wall'). Must be unique among siblings; omit when it would be the same as name.")] string? short_name = null,
         [Description("Status name (optional). Most elements need no status – omit for normal existing items. Only set when the user explicitly mentions a status like 'planned' or 'removed'. Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not self-evident from the name (optional). Only fill with information the user explicitly provided.")] string? purpose = null,
         [Description("Short temporary to-do during planning/construction (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
@@ -336,7 +336,7 @@ public static class ElementTools
     public static string UpdateElement(
         [Description("Full name of the element, e.g. 'House/GF/Kitchen/South-Wall/Socket'")] string fullname,
         [Description("New name (optional). Changes the full path! Concise name for the element, typically the object/function type. Brand, model, dimensions, and purchase details usually do not belong in the name; put them in description when no other field already covers them. Keep brand/model in the name only when they are the common identifier, e.g. 'Hue Bridge'. Keep a short sibling differentiator such as 'left'/'right' or a number when siblings would otherwise be ambiguous.")] string? name = null,
-        [Description("New short name (optional, 'CLEAR' to remove). Changes the full path! Optional concise path segment, mainly for structural containers. Must be unique among siblings; omit when it would be the same as name.")] string? short_name = null,
+        [Description("New short name (optional, 'CLEAR' to remove). Changes the full path! Optional concise path segment, mainly for location containers. Must be unique among siblings; omit when it would be the same as name.")] string? short_name = null,
         [Description("New category: name, short name, or full path (e.g. 'Electrical/Cable' when the name is ambiguous). Cannot be cleared – required field.")] string? category = null,
         [Description("New status name (optional). Set only when user explicitly mentions a status (e.g. 'Planned', 'Removed'). 'CLEAR' removes a previously set status. Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not already self-evident from the name ('CLEAR' to remove)")] string? purpose = null,

@@ -12,21 +12,21 @@ public static class ExploreTools
     [Description(
         "Entry point: shows the building skeleton. " +
         "Elements are physical items (installed equipment, appliances, furniture, fixtures, tools, " +
-        "structural components) organised in a location hierarchy (building → floor → room → wall → item). " +
-        "Default (structuralAreasOnly=true): returns the location hierarchy – buildings, floors, rooms, outdoor areas, garages, " +
+        "structural components) organised in a nested location tree. " +
+        "Default (primaryAreasOnly=true): returns the location hierarchy – buildings, floors, rooms, outdoor areas, garages, " +
         "and other navigable containers. " +
         "Use as the first overview to understand the layout of the home and identify the right element path " +
         "for follow-up calls (find_element, list_elements, get_element_details). " +
         "This is the map, not the inventory. " +
-        "With structuralAreasOnly=false and 'under': preferred way to browse all content of a specific area " +
+        "With primaryAreasOnly=false and 'under': preferred way to browse all content of a specific area " +
         "(e.g. 'What is in the basement?') – no result limit, full hierarchical tree, " +
         "more efficient than multiple find_element calls. " +
         "With 'under': restrict tree to a sub-path, e.g. 'House/GF/Office' – " +
         "shows only elements within that area, depth relative to that root. " +
         "Elements with status Planned or Removed are marked with their status name.")]
     public static string GetStructureOverview(
-        [Description("Show only structural area elements (structural area category). Default: true.")] bool structuralAreasOnly = true,
-        [Description("Maximum depth (relative to 'under' if specified). Default: auto – 3 for building overview; unlimited (full tree) when browsing area content (under + structuralAreasOnly=false).")] int maxDepth = 0,
+        [Description("Show only primary areas (categories flagged as primary area). Primary areas are the main location containers shown in the default structure overview, e.g. buildings, floors, rooms, garages, outdoor areas. Default: true.")] bool primaryAreasOnly = true,
+        [Description("Maximum depth (relative to 'under' if specified). Default: auto – 3 for building overview; unlimited (full tree) when browsing area content (under + primaryAreasOnly=false).")] int maxDepth = 0,
         [Description("Restrict tree to this sub-path, e.g. 'House/GF/Office'. Empty = entire building.")] string under = "")
     {
         under = under.Trim().TrimEnd('/');
@@ -48,7 +48,7 @@ public static class ExploreTools
             List<Row> rows;
             string title;
 
-            if (structuralAreasOnly)
+            if (primaryAreasOnly)
             {
                 var sql = new StringBuilder($"""
                     {SqlQueries.EtreeCte}
@@ -120,7 +120,7 @@ public static class ExploreTools
             }
 
             lines.Add("");
-            lines.Add(structuralAreasOnly
+            lines.Add(primaryAreasOnly
                 ? $"Total: {rows.Count} areas"
                 : $"Total: {rows.Count} elements");
             return string.Join("\n", lines);
@@ -136,7 +136,7 @@ public static class ExploreTools
         "Searches ALL elements by name or full path (partial text, case-insensitive). Up to 100 results. " +
         "Elements are physical items at a location: installed equipment (socket, boiler, radiator), " +
         "appliances (washing machine, fridge), furniture (sofa, wardrobe), fixtures, tools, " +
-        "and structural area containers (building, floor, room, wall). " +
+        "and location containers (building, floor, room, garage, outdoor area, wall area). " +
         "With 'status': filter by status type name (Existing / Planned / Removed – language-independent) " +
         "or by status name (exact match first, partial match as fallback). " +
         "'Existing' also includes elements with no status set, since most existing things carry no explicit status. " +
@@ -145,7 +145,7 @@ public static class ExploreTools
         "than a global search. At least one of searchTerm, under, status, or category must be provided. " +
         "With 'searchAllFields=true': also searches in Purpose, Note, Description, UserManual, and Position – " +
         "useful when a keyword appears in a field but not in the element name. " +
-        "Not suitable for browsing all content of an area – for that use get_structure_overview(under=..., structuralAreasOnly=false) which returns a complete tree without a result limit. " +
+        "Not suitable for browsing all content of an area – for that use get_structure_overview(under=..., primaryAreasOnly=false) which returns a complete tree without a result limit. " +
         "Note: physical lines (pipes, cables, conduits) are often documented as connections, not elements – " +
         "also call get_connections with searchTerm when searching for cables, pipes, or conduits.")]
     public static string FindElement(
@@ -355,7 +355,7 @@ public static class ExploreTools
 
     [McpServerTool(Name = "list_elements")]
     [Description(
-        "Lists the direct child elements of an element – both structural area elements " +
+        "Lists the direct child elements of an element – both primary area elements " +
         "(rooms, areas) and devices/components. Shows exactly one level of children. " +
         "Best for: 'What is in the kitchen?' or 'What rooms are on the ground floor?' " +
         "when the exact parent path is already known. " +
