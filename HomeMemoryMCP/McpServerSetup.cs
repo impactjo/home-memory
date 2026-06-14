@@ -19,12 +19,11 @@ public static class McpServerSetup
         """
         Home Memory gives your AI assistant persistent memory for everything in and around your home.
 
-        Home Memory stores places and objects as a nested tree, not a flat list: House → Floor or Area → Room → Wall → Device → Component, nested as deep as needed, e.g. a filter inside a pump. It can create the needed places from what the user says, so users can later ask at any level: "what's in the heating room?", "what's on the north wall?", "what's inside this pump?"
+        Home Memory stores places and items as elements in a nested tree, not a flat list. Places such as buildings, floors, rooms, garages, outdoor areas, or walls can hold items such as devices, furniture, tools, materials, and parts, nested as deeply as needed, e.g. a filter inside a pump. It can create the needed places from what the user says, so users can later ask at any level: "what's in the heating room?", "what's on the north wall?", "what's inside this pump?"
 
-        Track physical elements across all domains: rooms, floors & outdoor areas · building materials (walls, windows, flooring, roof) · electrical (circuits, lighting, outlets, PV/solar, wallbox, home automation) · HVAC · plumbing · IT & communications · security (alarm, fire protection, surveillance) · household (appliances, furniture, electronics, valuables) · vehicles (car, motorcycle, e-bike, bicycle, trailer) · tools · landscaping (garden, pool, irrigation) · health · and more.
+        Use connections only for physical lines between elements, such as cables, pipes, ducts, and conduits, with source, destination, and route. Don't model such a line as an ordinary item when the physical run itself is what matters.
 
-        Use the tree for location and containment; use connections only for physical lines such as cables, pipes, ducts, and conduits, with source, target and route.
-        Organise with flexible categories and statuses. All data persists in a local database across conversations.
+        Track physical elements across all home domains, organized with categories: building materials (walls, windows, flooring, roof) · electrical (circuits, lighting, outlets, PV/solar, wallbox, home automation) · HVAC · plumbing · IT & communications · security (alarm, fire protection, surveillance) · household (appliances, furniture, electronics, valuables) · vehicles (car, motorcycle, e-bike, bicycle, trailer) · tools · landscaping (garden, pool, irrigation) · health · and more. Categories are fully customizable: use the built-in ones, adapt them, or create your own. Statuses are customizable too and track lifecycle state such as existing, planned, or removed. All data persists in a local database across conversations.
 
         IMPORTANT – destructive operations: When a deletion fails because child elements or connections exist, treat the error as a stop signal. Report the full blocked scope to the user and ask for explicit confirmation. Never cascade-delete by removing children or connections first without user confirmation.
         """;
