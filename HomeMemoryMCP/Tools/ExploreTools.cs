@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel;
 using System.Text;
+using FirebirdSql.Data.FirebirdClient;
 using ModelContextProtocol.Server;
 using HomeMemory.MCP.Db;
 
@@ -23,14 +24,22 @@ public static class ExploreTools
         "more efficient than multiple find_element calls. " +
         "With 'under': restrict tree to a sub-path, e.g. 'House/GF/Office' – " +
         "shows only elements within that area, depth relative to that root. " +
-        "Elements with status Planned or Removed are marked with their status name.")]
+        "Elements with status Planned or Removed are marked with their status name. " +
+        "With metrics=\"counts\": appends three rollup numbers per node as [b… c… x…] – " +
+        "b (below: elements in the subtree under the node), c (conn: connections touching the subtree), " +
+        "x (cross: connections crossing the subtree boundary). " +
+        "x is the coupling indicator – how strongly a subtree is wired to the rest of the home.")]
     public static string GetStructureOverview(
         [Description("Show only primary areas (categories flagged as primary area). Primary areas are the main location containers shown in the default structure overview, e.g. buildings, floors, rooms, garages, outdoor areas. Default: true.")] bool primaryAreasOnly = true,
         [Description("Maximum depth (relative to 'under' if specified). Default: auto – 3 for building overview; unlimited (full tree) when browsing area content (under + primaryAreasOnly=false).")] int maxDepth = 0,
-        [Description("Restrict tree to this sub-path, e.g. 'House/GF/Office'. Empty = entire building.")] string under = "")
+        [Description("Restrict tree to this sub-path, e.g. 'House/GF/Office'. Empty = entire building.")] string under = "",
+        [Description("Set to \"counts\" to append per-node rollups [b… c… x…] (below, connections touching, connections crossing the boundary). Rollups always cover the full subtree, regardless of primaryAreasOnly/maxDepth/under. Default: empty (no metrics).")] string metrics = "")
     {
         under = under.Trim().TrimEnd('/');
         int depthOffset = under.Length == 0 ? 0 : under.Count(c => c == '/');
+        metrics = metrics.Trim().ToLowerInvariant();
+        if (metrics is not "" and not "counts")
+            return "Error: 'metrics' must be \"counts\" or empty.";
 
         try
         {
@@ -52,7 +61,7 @@ public static class ExploreTools
             {
                 var sql = new StringBuilder($"""
                     {SqlQueries.EtreeCte}
-                    SELECT et.FULLNAME, et."Name", et."ShortName", et.DEPTH, cat."Name" AS CATNAME,
+                    SELECT et."Oid", et.FULLNAME, et."Name", et."ShortName", et.DEPTH, cat."Name" AS CATNAME,
                            s."Name" AS STATUSNAME, s."StatusType" AS STATUSTYPE
                     FROM ETREE et
                     JOIN "CItem"    ci  ON ci."Oid"  = et."Oid"
@@ -80,7 +89,7 @@ public static class ExploreTools
                 int absMaxDepth = depthOffset + effectiveMaxDepth;
                 var sql = new StringBuilder($"""
                     {SqlQueries.EtreeCte}
-                    SELECT et.FULLNAME, et."Name", et."ShortName", et.DEPTH, NULL AS CATNAME,
+                    SELECT et."Oid", et.FULLNAME, et."Name", et."ShortName", et.DEPTH, NULL AS CATNAME,
                            s."Name" AS STATUSNAME, s."StatusType" AS STATUSTYPE
                     FROM ETREE et
                     LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
@@ -103,7 +112,11 @@ public static class ExploreTools
             if (rows.Count == 0)
                 return "No elements found.";
 
+            var rollups = metrics == "counts" ? ComputeRollups(conn) : null;
+
             var lines = new List<string> { $"{title}\n" };
+            if (rollups is not null)
+                lines.Add("Metrics per node: b = below (elements in subtree) c = conn (connections touching subtree) x = cross (connections crossing the subtree boundary)\n");
             foreach (var row in rows)
             {
                 int relDepth = Convert.ToInt32(row["DEPTH"]) - depthOffset;
@@ -116,6 +129,8 @@ public static class ExploreTools
                 var st = row.GetValueOrDefault("STATUSTYPE");
                 if (st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2)
                     label += $"  {{{row.Str("STATUSNAME")}}}";
+                if (rollups is not null && rollups.TryGetValue(FirebirdDb.OidKey(row["Oid"]), out var m))
+                    label += $"  [b{m.below} c{m.conn} x{m.cross}]";
                 lines.Add($"{indent}{icon} {label}");
             }
 
@@ -129,6 +144,70 @@ public static class ExploreTools
         {
             return $"Error: {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// Computes per-element rollups over the full element tree, independent of any display filter
+    /// (primaryAreasOnly / maxDepth / under), keyed by <see cref="FirebirdDb.OidKey"/>:
+    ///   below = elements strictly below the node (whole subtree, excluding the node itself)
+    ///   conn  = distinct connections with at least one endpoint in {node + descendants}
+    ///   cross = distinct connections with exactly one endpoint in {node + descendants} (cross the boundary)
+    /// Identity is the stable tree (Element.Oid + PartOfElement), never the computed FULLNAME.
+    /// An unresolvable/dangling connection endpoint normalises to "" and counts as outside every subtree,
+    /// so a connection with one known endpoint inside and the other dangling is counted as cross.
+    /// </summary>
+    private static Dictionary<string, (int below, int conn, int cross)> ComputeRollups(FbConnection conn)
+    {
+        var elems = FirebirdDb.ExecuteQuery(conn, """SELECT "Oid", "PartOfElement" FROM "Element" """);
+        var children = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var allKeys = new List<string>(elems.Count);
+        foreach (var r in elems)
+        {
+            var oid = FirebirdDb.OidKey(r["Oid"]);
+            allKeys.Add(oid);
+            var parent = r.GetValueOrDefault("PartOfElement");
+            if (parent is not null and not DBNull)
+            {
+                var pk = FirebirdDb.OidKey(parent);
+                if (!children.TryGetValue(pk, out var list)) children[pk] = list = new();
+                list.Add(oid);
+            }
+        }
+
+        // {self + descendants} per node via memoized DFS (tree is shallow, ~7 levels).
+        // The set is stored before recursion so malformed cyclic data terminates instead of overflowing.
+        var subtree = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> Build(string node)
+        {
+            if (subtree.TryGetValue(node, out var cached)) return cached;
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { node };
+            subtree[node] = set;
+            if (children.TryGetValue(node, out var kids))
+                foreach (var k in kids) set.UnionWith(Build(k));
+            return set;
+        }
+        foreach (var k in allKeys) Build(k);
+
+        var endpoints = FirebirdDb.ExecuteQuery(conn, """SELECT "Source", "Destination" FROM "Connection" """)
+            .Select(c => (src: FirebirdDb.OidKey(c.GetValueOrDefault("Source")),
+                          dst: FirebirdDb.OidKey(c.GetValueOrDefault("Destination"))))
+            .ToList();
+
+        var result = new Dictionary<string, (int below, int conn, int cross)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var k in allKeys)
+        {
+            var set = subtree[k];
+            int connCount = 0, crossCount = 0;
+            foreach (var (src, dst) in endpoints)
+            {
+                bool sIn = set.Contains(src);
+                bool dIn = set.Contains(dst);
+                if (sIn || dIn) connCount++;
+                if (sIn ^ dIn)  crossCount++;
+            }
+            result[k] = (set.Count - 1, connCount, crossCount);
+        }
+        return result;
     }
 
     [McpServerTool(Name = "find_element")]
