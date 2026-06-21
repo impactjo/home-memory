@@ -52,14 +52,14 @@ public static class SqlQueries
     public const string CatCteBody = """
 
             SELECT
-                cat."Oid", cat."Name", cat."ShortName", cat."IsAreaCategory",
+                cat."Oid", cat."Name", cat."ShortName", cat."IsAreaCategory", cat."ParentCategory",
                 CAST(COALESCE(NULLIF(TRIM(cat."ShortName"), ''), cat."Name") AS VARCHAR(500)) AS CAT_FULLNAME,
                 0 AS CAT_DEPTH
             FROM "Category" cat
             WHERE cat."ParentCategory" IS NULL
             UNION ALL
             SELECT
-                cat."Oid", cat."Name", cat."ShortName", cat."IsAreaCategory",
+                cat."Oid", cat."Name", cat."ShortName", cat."IsAreaCategory", cat."ParentCategory",
                 CAST(parent.CAT_FULLNAME || '/' || COALESCE(NULLIF(TRIM(cat."ShortName"), ''), cat."Name") AS VARCHAR(500)) AS CAT_FULLNAME,
                 parent.CAT_DEPTH + 1
             FROM "Category" cat

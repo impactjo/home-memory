@@ -15,7 +15,7 @@ public static class CategoryTools
         var sql = $"""
             {SqlQueries.CatCte}
             SELECT ct."Oid", ct.CAT_FULLNAME, ct."Name", ct."ShortName",
-                   ct.CAT_DEPTH, ct."IsAreaCategory",
+                   ct.CAT_DEPTH, ct."IsAreaCategory", ct."ParentCategory",
                    COUNT(e."Oid")    AS ELEM_COUNT,
                    COUNT(conn."Oid") AS CONN_COUNT,
                    COUNT(pt."Oid")   AS PT_COUNT,
@@ -28,11 +28,60 @@ public static class CategoryTools
             LEFT JOIN "PartType"   pt   ON pt."Oid"  = ci."Oid"
             LEFT JOIN "CEntity"    ce   ON ce."Oid"  = ct."Oid"
             GROUP BY ct."Oid", ct.CAT_FULLNAME, ct."Name", ct."ShortName",
-                     ct.CAT_DEPTH, ct."IsAreaCategory",
+                     ct.CAT_DEPTH, ct."IsAreaCategory", ct."ParentCategory",
                      ce."Purpose", ce."Note", ce."Description", ce."UserManual"
             ORDER BY ct.CAT_FULLNAME
             """;
         return FirebirdDb.ExecuteQuery(conn, sql);
+    }
+
+    /// <summary>
+    /// Rolls up the direct per-category counts from <see cref="LoadCatTree"/> over each category's
+    /// subtree (self + descendant categories), keyed by <see cref="FirebirdDb.OidKey"/>. Because every
+    /// item has exactly one category, a subtree sum involves no double counting. These totals match
+    /// what get_by_category (elements) and get_connections (connections) return for the category, since
+    /// both resolve descendant categories too.
+    /// </summary>
+    private static Dictionary<string, (long elem, long conn, long pt, long other)> ComputeCategoryRollups(List<Row> rows)
+    {
+        var direct   = new Dictionary<string, (long elem, long conn, long pt, long other)>(StringComparer.OrdinalIgnoreCase);
+        var children = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var allKeys  = new List<string>(rows.Count);
+        foreach (var r in rows)
+        {
+            var oid = FirebirdDb.OidKey(r["Oid"]);
+            allKeys.Add(oid);
+            long e  = r.Long("ELEM_COUNT");
+            long c  = r.Long("CONN_COUNT");
+            long pt = r.Long("PT_COUNT");
+            long ci = r.Long("CI_COUNT");
+            direct[oid] = (e, c, pt, ci - e - c - pt);
+            var parent = r.GetValueOrDefault("ParentCategory");
+            if (parent is not null and not DBNull)
+            {
+                var pk = FirebirdDb.OidKey(parent);
+                if (!children.TryGetValue(pk, out var list)) children[pk] = list = new();
+                list.Add(oid);
+            }
+        }
+
+        var totals = new Dictionary<string, (long elem, long conn, long pt, long other)>(StringComparer.OrdinalIgnoreCase);
+        (long elem, long conn, long pt, long other) Build(string node)
+        {
+            if (totals.TryGetValue(node, out var cached)) return cached;
+            var sum = direct.GetValueOrDefault(node);
+            totals[node] = sum; // store before recursion so malformed cyclic data terminates
+            if (children.TryGetValue(node, out var kids))
+                foreach (var k in kids)
+                {
+                    var ck = Build(k);
+                    sum = (sum.elem + ck.elem, sum.conn + ck.conn, sum.pt + ck.pt, sum.other + ck.other);
+                }
+            totals[node] = sum;
+            return sum;
+        }
+        foreach (var k in allKeys) Build(k);
+        return totals;
     }
 
     // ── Tools ─────────────────────────────────────────────────────────────────
@@ -40,6 +89,8 @@ public static class CategoryTools
     [McpServerTool(Name = "list_categories")]
     [Description(
         "Lists all object categories with item counts (elements, connections, part types, and other items, shown when non-zero). " +
+        "Counts cover the category and its subcategories, matching what get_by_category and get_connections return; " +
+        "when a count includes both direct and subcategory items, the directly-classified share is also shown as '; N direct'. " +
         "Categories classify both elements (physical items: equipment, furniture, fixtures) " +
         "and connections (physical lines: pipes, cables, ducts). " +
         "IMPORTANT: Call this before create_element or create_connection to pick the right category. " +
@@ -55,6 +106,7 @@ public static class CategoryTools
         {
             using var conn = FirebirdDb.OpenConnection();
             var rows = LoadCatTree(conn);
+            var rollups = ComputeCategoryRollups(rows);
 
             var lines = new List<string> { "Object categories:\n" };
             foreach (var r in rows)
@@ -66,17 +118,28 @@ public static class CategoryTools
                 var sn     = r.Str("ShortName");
                 var label  = !string.IsNullOrEmpty(sn) && sn != name ? $"{name} ({sn})" : name;
                 bool isPrimaryArea = FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"));
-                long e  = r.Long("ELEM_COUNT");
-                long c  = r.Long("CONN_COUNT");
-                long pt = r.Long("PT_COUNT");
-                long ci = r.Long("CI_COUNT");
-                long ot = ci - e - c - pt;
+                // Counts cover the whole subtree (category + subcategories), matching what
+                // get_by_category / get_connections return. When a parent also has items of its own,
+                // the directly-classified share is appended so the headline never understates a parent.
+                long de  = r.Long("ELEM_COUNT");
+                long dc  = r.Long("CONN_COUNT");
+                long dpt = r.Long("PT_COUNT");
+                long dci = r.Long("CI_COUNT");
+                long dot = dci - de - dc - dpt;
+                var t = rollups[FirebirdDb.OidKey(r["Oid"])];
                 var parts = new List<string>();
-                if (e  > 0) parts.Add($"{e} elem.");
-                if (c  > 0) parts.Add($"{c} conn.");
-                if (pt > 0) parts.Add($"{pt} part type{(pt == 1 ? "" : "s")}");
-                if (ot > 0) parts.Add($"{ot} other");
-                var countStr = parts.Count > 0 ? $"  ({string.Join(", ", parts)})" : "";
+                if (t.elem  > 0) parts.Add($"{t.elem} elem.");
+                if (t.conn  > 0) parts.Add($"{t.conn} conn.");
+                if (t.pt    > 0) parts.Add($"{t.pt} part type{(t.pt == 1 ? "" : "s")}");
+                if (t.other > 0) parts.Add($"{t.other} other");
+                // "direct" qualifier only for buckets genuinely split (some here, more below).
+                var directParts = new List<string>();
+                if (de  > 0 && de  < t.elem)  directParts.Add($"{de} elem.");
+                if (dc  > 0 && dc  < t.conn)  directParts.Add($"{dc} conn.");
+                if (dpt > 0 && dpt < t.pt)    directParts.Add($"{dpt} part type{(dpt == 1 ? "" : "s")}");
+                if (dot > 0 && dot < t.other) directParts.Add($"{dot} other");
+                var directStr = directParts.Count > 0 ? $"; {string.Join(", ", directParts)} direct" : "";
+                var countStr = parts.Count > 0 ? $"  ({string.Join(", ", parts)}{directStr})" : "";
                 var flagParts = new List<string>();
                 if (!string.IsNullOrEmpty(r.Str("Purpose")))     flagParts.Add("p");
                 if (!string.IsNullOrEmpty(r.Str("Note")))        flagParts.Add("n");
@@ -204,7 +267,8 @@ public static class CategoryTools
     [McpServerTool(Name = "get_category_details")]
     [Description(
         "Full details of a single object category: path, parent, primary area flag, " +
-        "item counts (elements, connections, part types, other), purpose, note, description, and user manual. " +
+        "direct and subtree item counts (elements, connections, part types, other; subtree spans subcategories at any depth), " +
+        "purpose, note, description, and user manual. " +
         "Identify by full path (e.g. 'Electrical/Cable') or by name/short name when unambiguous. " +
         "update_category requires calling this first before modifying purpose, note, description, or user_manual.")]
     public static string GetCategoryDetails(
@@ -272,9 +336,43 @@ public static class CategoryTools
             var ciCount    = usageRows[0].Long("CI_COUNT");
             var otherCount = ciCount - elemCount - connCount - ptCount;
 
-            var childRows = FirebirdDb.ExecuteQuery(conn,
-                """SELECT COUNT(*) AS CNT FROM "Category" WHERE "ParentCategory" = ?""", catOid);
-            var childCount = FirebirdDb.CountResult(childRows);
+            // Descendant categories (whole subtree, excluding self). The subtree usage below spans all
+            // of them, not just direct children, so the suffix must count descendants — otherwise a
+            // Parent -> Child -> Grandchild tree would total the grandchild yet say "1 child category".
+            var descRows = FirebirdDb.ExecuteQuery(conn, """
+                WITH RECURSIVE SUBCAT AS (
+                    SELECT "Oid" FROM "Category" WHERE "Oid" = ?
+                    UNION ALL
+                    SELECT c."Oid" FROM "Category" c JOIN SUBCAT s ON c."ParentCategory" = s."Oid"
+                )
+                SELECT COUNT(*) - 1 AS CNT FROM SUBCAT
+                """, catOid);
+            var descendantCount = FirebirdDb.CountResult(descRows);
+
+            // Subtree usage: this category plus all descendant categories — matches what
+            // get_by_category / get_connections return (both resolve descendants).
+            var subtreeRows = FirebirdDb.ExecuteQuery(conn, """
+                WITH RECURSIVE SUBCAT AS (
+                    SELECT "Oid" FROM "Category" WHERE "Oid" = ?
+                    UNION ALL
+                    SELECT c."Oid" FROM "Category" c JOIN SUBCAT s ON c."ParentCategory" = s."Oid"
+                )
+                SELECT
+                    COUNT(e."Oid")  AS ELEM_COUNT,
+                    COUNT(cn."Oid") AS CONN_COUNT,
+                    COUNT(pt."Oid") AS PT_COUNT,
+                    COUNT(ci."Oid") AS CI_COUNT
+                FROM SUBCAT
+                JOIN "CItem" ci ON ci."Category" = SUBCAT."Oid"
+                LEFT JOIN "Element"    e  ON e."Oid"  = ci."Oid"
+                LEFT JOIN "Connection" cn ON cn."Oid" = ci."Oid"
+                LEFT JOIN "PartType"   pt ON pt."Oid" = ci."Oid"
+                """, catOid);
+            var subElem  = subtreeRows[0].Long("ELEM_COUNT");
+            var subConn  = subtreeRows[0].Long("CONN_COUNT");
+            var subPt    = subtreeRows[0].Long("PT_COUNT");
+            var subCi    = subtreeRows[0].Long("CI_COUNT");
+            var subOther = subCi - subElem - subConn - subPt;
 
             var lines = new List<string> { $"Category: {fullPath}\n" };
             lines.Add($"  Name             : {name}");
@@ -283,13 +381,20 @@ public static class CategoryTools
             lines.Add($"  Parent           : {parentPath ?? "(top-level)"}");
             lines.Add($"  Primary area     : {(isArea ? "yes" : "no")}");
 
-            var countParts = new List<string>();
-            if (elemCount  > 0) countParts.Add($"{elemCount} element{(elemCount == 1 ? "" : "s")}");
-            if (connCount  > 0) countParts.Add($"{connCount} connection{(connCount == 1 ? "" : "s")}");
-            if (ptCount    > 0) countParts.Add($"{ptCount} part type{(ptCount == 1 ? "" : "s")}");
-            if (otherCount > 0) countParts.Add($"{otherCount} other");
-            if (childCount > 0) countParts.Add($"{childCount} child categor{(childCount == 1 ? "y" : "ies")}");
-            lines.Add($"  Usage            : {(countParts.Count > 0 ? string.Join(", ", countParts) : "none")}");
+            static string UsageParts(long el, long cn, long p, long ot)
+            {
+                var parts = new List<string>();
+                if (el > 0) parts.Add($"{el} element{(el == 1 ? "" : "s")}");
+                if (cn > 0) parts.Add($"{cn} connection{(cn == 1 ? "" : "s")}");
+                if (p  > 0) parts.Add($"{p} part type{(p == 1 ? "" : "s")}");
+                if (ot > 0) parts.Add($"{ot} other");
+                return parts.Count > 0 ? string.Join(", ", parts) : "none";
+            }
+            lines.Add($"  Direct usage     : {UsageParts(elemCount, connCount, ptCount, otherCount)}");
+            var subtreeSuffix = descendantCount > 0
+                ? $"  (across {descendantCount} subcategor{(descendantCount == 1 ? "y" : "ies")})"
+                : "";
+            lines.Add($"  Subtree usage    : {UsageParts(subElem, subConn, subPt, subOther)}{subtreeSuffix}");
 
             if (!string.IsNullOrEmpty(r.Str("Purpose")))
                 lines.Add($"  Purpose          : {r.Str("Purpose")}");
@@ -323,7 +428,7 @@ public static class CategoryTools
         "If the field already has content, inform the user and ask whether to replace or extend. " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user/documentation guide -> user_manual (multiline, 4000 chars). " +
         "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab. " +
-        "Note: renaming/moving a category automatically updates the full path of all child categories " +
+        "Note: renaming/moving a category automatically updates the full path of all subcategories " +
         "(FullName is computed dynamically – no stored paths need to be migrated).")]
     public static string UpdateCategory(
         [Description("Current full path of the category to update, e.g. 'Electrical/Lighting'.")] string category,
