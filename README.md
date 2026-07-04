@@ -11,11 +11,11 @@
 </p>
 
 <p align="center">
-  <a href="https://www.youtube.com/watch?v=J9ziKLE8NO8">
-    <img src="https://img.youtube.com/vi/J9ziKLE8NO8/maxresdefault.jpg" width="600" alt="Watch the Home Memory demo on YouTube">
+  <a href="https://home-memory.com">
+    <img src="docs/hero.png" width="640" alt="Home Memory: Your home holds more than you remember.">
   </a>
   <br>
-  <a href="https://www.youtube.com/watch?v=J9ziKLE8NO8">▶ Watch the 1-minute demo on YouTube</a>
+  Prefer a less technical introduction? Visit <a href="https://home-memory.com">home-memory.com</a>.
 </p>
 
 ---
@@ -185,7 +185,7 @@ See [Setup Guide](docs/SETUP-GUIDE.md) for details on Firebird configuration and
 
 ```
 You ──── AI Assistant ──── Home Memory MCP ──── Local Database
-              (natural language)      (20+ tools)       (Firebird, single file)
+(natural language)           (24 tools)    (Firebird, single file)
 ```
 
 Home Memory implements the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), an open standard that lets AI assistants use external tools. When you talk to your AI about your home, it calls Home Memory's tools behind the scenes to read, create, update, and search your home data.
