@@ -97,8 +97,8 @@
         "isPrimaryArea": false,
         "children": [
           { "name": "Actuator",        "shortName": null, "isPrimaryArea": false, "children": [] },
+          { "name": "Bus Cable",       "shortName": null, "isPrimaryArea": false, "children": [] },
           { "name": "Control Panel",   "shortName": null, "isPrimaryArea": false, "children": [] },
-          { "name": "Data Cable",      "shortName": null, "isPrimaryArea": false, "children": [] },
           { "name": "Gateway",         "shortName": null, "isPrimaryArea": false, "children": [] },
           { "name": "Motion Detector", "shortName": null, "isPrimaryArea": false, "children": [] },
           { "name": "Push Button",     "shortName": null, "isPrimaryArea": false, "children": [] },
@@ -141,9 +141,9 @@
     "shortName": null,
     "isPrimaryArea": false,
     "children": [
-      { "name": "Drainage",          "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Gas Supply",        "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Sanitary Fixtures", "shortName": null, "isPrimaryArea": false, "children": [] },
+      { "name": "Wastewater",        "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Water Supply",      "shortName": null, "isPrimaryArea": false, "children": [] }
     ]
   },
@@ -152,6 +152,7 @@
     "shortName": "ITC",
     "isPrimaryArea": false,
     "children": [
+      { "name": "Data Cable",       "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Network",          "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Telephony",        "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "TV & Multimedia",  "shortName": null, "isPrimaryArea": false, "children": [] }
