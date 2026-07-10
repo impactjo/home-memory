@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using HomeMemory.MCP.Tools;
 
 namespace HomeMemory.MCP.Db;
 
@@ -27,8 +28,8 @@ public static class DbSeeder
         try
         {
             SeedStatuses(conn, txn);
-            SeedCategories(conn, txn);
-            SeedElements(conn, txn);
+            var categoryPathToOid = SeedCategories(conn, txn);
+            SeedElements(conn, txn, categoryPathToOid);
             txn.Commit();
             Console.Error.WriteLine("[HomeMemory] Seed complete.");
         }
@@ -63,26 +64,54 @@ public static class DbSeeder
     // Categories (recursive tree)
     // -------------------------------------------------------------------------
 
-    private static void SeedCategories(FbConnection conn, FbTransaction txn)
+    /// <summary>
+    /// Inserts the full category tree and returns a map of each category's canonical path
+    /// (canonical ShortName-or-Name segments separated by '/', e.g. "HVAC/Heating") to its OID.
+    /// The map is the only way elements resolve their category — see <see cref="SeedElements"/>.
+    /// </summary>
+    private static Dictionary<string, string> SeedCategories(FbConnection conn, FbTransaction txn)
     {
         var json = ReadEmbedded("SeedData.categories.json");
         var categories = JsonSerializer.Deserialize<CategorySeed[]>(json,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? [];
 
+        // Canonical category path → OID. Case-insensitive resolution, mirroring the
+        // production tools. Segments use the same rule as the CAT-CTE (SqlQueries):
+        // trimmed ShortName when present, otherwise Name — e.g. "HVAC/Heating".
+        var pathToOid = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var cat in categories)
-            InsertCategory(conn, txn, cat, parentOid: null);
+            InsertCategory(conn, txn, cat, parentOid: null, parentPath: null, pathToOid);
+
+        return pathToOid;
     }
 
-    private static void InsertCategory(FbConnection conn, FbTransaction txn,
-        CategorySeed cat, string? parentOid)
+    /// <summary>
+    /// Canonical path segment for a category: trimmed ShortName when non-empty, else Name.
+    /// Matches COALESCE(NULLIF(TRIM("ShortName"), ''), "Name") used by the CAT-CTE.
+    /// </summary>
+    private static string CategorySegment(CategorySeed cat)
+    {
+        var shortName = cat.ShortName?.Trim();
+        return string.IsNullOrEmpty(shortName) ? cat.Name : shortName;
+    }
+
+    internal static void InsertCategory(FbConnection conn, FbTransaction txn,
+        CategorySeed cat, string? parentOid, string? parentPath,
+        Dictionary<string, string> pathToOid)
     {
         var oid = NewOid();
 
+        var lengthError = Validate.Length(cat.Purpose, "purpose", 200);
+        if (lengthError != null)
+            throw new InvalidOperationException($"Seed error for category '{cat.Name}': {lengthError}");
+
         // CEntity base row
         FirebirdDb.ExecuteNonQuery(conn, txn,
-            "INSERT INTO \"CEntity\" (\"Oid\", \"ObjectType\", \"OptimisticLockField\", \"CreatedOn\", \"CreatedBy\")" +
-            " VALUES (?, ?, 0, ?, ?)",
-            oid, XPObjectTypes.Category, DateTime.UtcNow, "HomeMemory");
+            "INSERT INTO \"CEntity\" (\"Oid\", \"ObjectType\", \"OptimisticLockField\", \"CreatedOn\", \"CreatedBy\", \"Purpose\")" +
+            " VALUES (?, ?, 0, ?, ?, ?)",
+            oid, XPObjectTypes.Category, DateTime.UtcNow, "HomeMemory",
+            cat.Purpose ?? (object)DBNull.Value);
 
         // Category row
         FirebirdDb.ExecuteNonQuery(conn, txn,
@@ -94,15 +123,30 @@ public static class DbSeeder
             cat.IsPrimaryArea,
             parentOid ?? (object)DBNull.Value);
 
+        var segment = CategorySegment(cat);
+        var path = parentPath != null ? $"{parentPath}/{segment}" : segment;
+        if (!pathToOid.TryAdd(path, oid))
+        {
+            var existingOid = pathToOid[path];
+            var existingRows = FirebirdDb.ExecuteQuery(conn, txn,
+                "SELECT \"Name\" FROM \"Category\" WHERE \"Oid\" = ?", existingOid);
+            var existingName = existingRows.Count > 0 ? FirebirdDb.Str(existingRows[0]["Name"]) : "?";
+            throw new InvalidOperationException(
+                $"Seed error: two categories resolve to the same canonical path '{path}': " +
+                $"existing '{existingName}' (OID {existingOid}), conflicting '{cat.Name}' (OID {oid}). " +
+                "Canonical category paths (ShortName-or-Name segments) must be unique.");
+        }
+
         foreach (var child in cat.Children ?? [])
-            InsertCategory(conn, txn, child, oid);
+            InsertCategory(conn, txn, child, oid, path, pathToOid);
     }
 
     // -------------------------------------------------------------------------
     // Area elements (flat list; parent resolved by FullName path)
     // -------------------------------------------------------------------------
 
-    private static void SeedElements(FbConnection conn, FbTransaction txn)
+    private static void SeedElements(FbConnection conn, FbTransaction txn,
+        IReadOnlyDictionary<string, string> categoryPathToOid)
     {
         var json = ReadEmbedded("SeedData.elements.json");
         var elements = JsonSerializer.Deserialize<ElementSeed[]>(json,
@@ -112,18 +156,31 @@ public static class DbSeeder
         var oidByFullName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var el in elements)
-            InsertElement(conn, txn, el, oidByFullName);
+            InsertElement(conn, txn, el, oidByFullName, categoryPathToOid);
+    }
+
+    /// <summary>
+    /// Resolves a category by its full path (e.g. "Area/Building/House") via the map built
+    /// while seeding categories. Only exact full paths resolve — short leaf names do not,
+    /// so same-named leaves under different parents stay unambiguous.
+    /// </summary>
+    internal static string ResolveCategoryOid(string categoryPath,
+        IReadOnlyDictionary<string, string> categoryPathToOid)
+    {
+        if (!categoryPathToOid.TryGetValue(categoryPath, out var oid))
+            throw new InvalidOperationException(
+                $"Seed error: category path '{categoryPath}' not found. " +
+                "Use the full category path with '/'-separated segments, e.g. 'Area/Building/House'.");
+        return oid;
     }
 
     private static void InsertElement(FbConnection conn, FbTransaction txn,
-        ElementSeed el, Dictionary<string, string> oidByFullName)
+        ElementSeed el, Dictionary<string, string> oidByFullName,
+        IReadOnlyDictionary<string, string> categoryPathToOid)
     {
-        // Resolve category OID (must pass txn – Firebird requires it on connections with active transactions)
-        var catRows = FirebirdDb.ExecuteQuery(conn, txn,
-            "SELECT \"Oid\" FROM \"Category\" WHERE \"Name\" = ?", el.Category);
-        if (catRows.Count == 0)
-            throw new InvalidOperationException($"Seed error: category '{el.Category}' not found.");
-        var catOid = FirebirdDb.Str(catRows[0]["Oid"]);
+        // Resolve category by full path only – no short-name fallback (would reintroduce
+        // ambiguity for same-named leaves under different parents).
+        var catOid = ResolveCategoryOid(el.Category, categoryPathToOid);
 
         // Resolve parent OID (if any)
         string? parentOid = null;
@@ -191,10 +248,11 @@ public static class DbSeeder
 
     private record StatusSeed(string Name, int Type);
 
-    private record CategorySeed(
+    internal record CategorySeed(
         string Name,
         string? ShortName,
         bool IsPrimaryArea,
+        string? Purpose,
         CategorySeed[]? Children);
 
     private record ElementSeed(

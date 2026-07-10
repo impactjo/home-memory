@@ -3,6 +3,7 @@
     "name": "Area",
     "shortName": null,
     "isPrimaryArea": true,
+    "purpose": "For elements that represent a spatial area rather than a discrete component, such as a building, floor, room, wall area, or garden area.",
     "children": [
       {
         "name": "Building",
@@ -46,23 +47,25 @@
     "name": "Building Material",
     "shortName": null,
     "isPrimaryArea": false,
+    "purpose": "Building materials and permanently installed components of the building itself, when not covered by a more specific category.",
     "children": [
-      { "name": "Door",          "shortName": null, "isPrimaryArea": false, "children": [] },
-      { "name": "Flooring",      "shortName": null, "isPrimaryArea": false, "children": [] },
+      { "name": "Door",          "shortName": null, "isPrimaryArea": false, "purpose": "Interior and exterior doors; patio doors belong under Window.", "children": [] },
+      { "name": "Flooring",      "shortName": null, "isPrimaryArea": false, "purpose": "Floor coverings and floor build-up layers, such as screed and fill.", "children": [] },
       { "name": "Pipe",          "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Roof",          "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Roof Drainage", "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Stairs",        "shortName": null, "isPrimaryArea": false, "children": [] },
-      { "name": "Wall",          "shortName": null, "isPrimaryArea": false, "children": [] },
+      { "name": "Wall",          "shortName": null, "isPrimaryArea": false, "purpose": "Wall construction and build-up.", "children": [] },
       {
         "name": "Window",
         "shortName": null,
         "isPrimaryArea": false,
+        "purpose": "Windows, window sills, and patio doors.",
         "children": [
-          { "name": "Shading", "shortName": null, "isPrimaryArea": false, "children": [] }
+          { "name": "Shading", "shortName": null, "isPrimaryArea": false, "purpose": "Roller shutters and external venetian blinds.", "children": [] }
         ]
       },
-      { "name": "Other",         "shortName": null, "isPrimaryArea": false, "children": [] }
+      { "name": "Other",         "shortName": null, "isPrimaryArea": false, "purpose": "Use for insulation, waterproofing, wall and ceiling build-up materials, light wells, drywall materials, and shafts.", "children": [] }
     ]
   },
   {
@@ -76,6 +79,7 @@
         "name": "Distribution Board",
         "shortName": null,
         "isPrimaryArea": false,
+        "purpose": "Electrical distribution, fuse, and meter cabinets.",
         "children": [
           { "name": "Circuit Breaker", "shortName": null, "isPrimaryArea": false, "children": [] },
           {
@@ -88,7 +92,7 @@
             ]
           },
           { "name": "Terminal Block",  "shortName": null, "isPrimaryArea": false, "children": [] },
-          { "name": "Other",           "shortName": null, "isPrimaryArea": false, "children": [] }
+          { "name": "Other",           "shortName": null, "isPrimaryArea": false, "purpose": "Other components installed in a distribution board.", "children": [] }
         ]
       },
       {
@@ -103,10 +107,10 @@
           { "name": "Motion Detector", "shortName": null, "isPrimaryArea": false, "children": [] },
           { "name": "Push Button",     "shortName": null, "isPrimaryArea": false, "children": [] },
           { "name": "Sensor",          "shortName": null, "isPrimaryArea": false, "children": [] },
-          { "name": "Other",           "shortName": null, "isPrimaryArea": false, "children": [] }
+          { "name": "Other",           "shortName": null, "isPrimaryArea": false, "purpose": "Use for components such as IP/USB interfaces, power supplies, visualization servers, and logic servers.", "children": [] }
         ]
       },
-      { "name": "Junction Box", "shortName": null, "isPrimaryArea": false, "children": [] },
+      { "name": "Junction Box", "shortName": null, "isPrimaryArea": false, "purpose": "Electrical junction and device boxes.", "children": [] },
       { "name": "Lighting",     "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Meter",        "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Outlet",       "shortName": null, "isPrimaryArea": false, "children": [] },
