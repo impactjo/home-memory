@@ -17,7 +17,8 @@ public static class ElementTools
         "and all incoming and outgoing connections (physical lines: pipes, cables, ducts). " +
         "Use when the exact path is known and you need details or connections. " +
         "An element is any physical item in the building: installed equipment, appliance, " +
-        "furniture, fixture, tool, or location container (room, floor, etc.).")]
+        "furniture, fixture, tool, or location container (room, floor, etc.). " +
+        "Returns creation metadata and, when available, last-update metadata; records imported from external tools may lack this data.")]
     public static string GetElementDetails(
         [Description("Full name path, e.g. 'House/GF/Kitchen/South-Wall/Socket'")] string fullname)
     {
@@ -64,6 +65,10 @@ public static class ElementTools
                     ce."Note",
                     ce."Description",
                     ce."UserManual",
+                    ce."CreatedOn",
+                    ce."CreatedBy",
+                    ce."UpdatedOn",
+                    ce."UpdatedBy",
                     s."Name"   AS StatusName,
                     cat."Name" AS CategoryName,
                     pt."Name"  AS PartTypeName
@@ -93,6 +98,8 @@ public static class ElementTools
                     lines.Add($"  Description : {e.Str("Description")}");
                 if (!string.IsNullOrEmpty(e.Str("UserManual")))
                     lines.Add($"  User manual : {e.Str("UserManual")}");
+
+                lines.AddRange(QueryHelpers.FormatAuditLines(e, 12));
             }
 
             var children = FirebirdDb.ExecuteQuery(conn, """

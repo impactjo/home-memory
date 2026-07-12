@@ -53,6 +53,37 @@ internal static class QueryHelpers
     }
 
     /// <summary>
+    /// Formats CreatedOn/CreatedBy/UpdatedOn/UpdatedBy from <paramref name="row"/> into up to two
+    /// audit lines ("Created" and "Updated"), padded to <paramref name="labelWidth"/> to match the
+    /// surrounding field block. A line is omitted entirely when neither the timestamp nor the user
+    /// is present. Treats null and DBNull the same, since some queries reach CreatedOn/CreatedBy via
+    /// a LEFT JOIN where the CEntity row itself can be absent.
+    /// </summary>
+    internal static List<string> FormatAuditLines(Row row, int labelWidth)
+    {
+        var lines = new List<string>();
+        AppendAuditLine(lines, "Created", row.GetValueOrDefault("CreatedOn"), row.Str("CreatedBy"), labelWidth);
+        AppendAuditLine(lines, "Updated", row.GetValueOrDefault("UpdatedOn"), row.Str("UpdatedBy"), labelWidth);
+        return lines;
+    }
+
+    private static void AppendAuditLine(List<string> lines, string verb, object? onValue, string byValue, int labelWidth)
+    {
+        bool hasOn = onValue is DateTime;
+        bool hasBy = !string.IsNullOrEmpty(byValue);
+        if (!hasOn && !hasBy) return;
+
+        string text = hasOn && hasBy
+            ? $"{(DateTime)onValue!:yyyy-MM-dd HH:mm} UTC by {byValue}"
+            : hasOn
+                ? $"{(DateTime)onValue!:yyyy-MM-dd HH:mm} UTC"
+                : byValue;
+
+        var label = hasOn ? verb : $"{verb} by";
+        lines.Add($"  {label.PadRight(labelWidth)}: {text}");
+    }
+
+    /// <summary>
     /// Splits a full element path into (parent, name).
     /// The parent segment includes the trailing slash, e.g. "House/GF/" and "Kitchen".
     /// Returns ("", fullname) for top-level elements.

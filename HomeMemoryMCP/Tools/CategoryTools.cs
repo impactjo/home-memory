@@ -270,7 +270,8 @@ public static class CategoryTools
         "direct and subtree item counts (elements, connections, part types, other; subtree spans subcategories at any depth), " +
         "purpose, note, description, and user manual. " +
         "Identify by full path (e.g. 'Electrical/Cable') or by name/short name when unambiguous. " +
-        "update_category requires calling this first before modifying purpose, note, description, or user_manual.")]
+        "update_category requires calling this first before modifying purpose, note, description, or user_manual. " +
+        "Returns creation metadata and, when available, last-update metadata; records imported from external tools may lack this data.")]
     public static string GetCategoryDetails(
         [Description("Full category path (e.g. 'Electrical/Cable'), name, or short name. Use full path to disambiguate.")] string category)
     {
@@ -291,7 +292,8 @@ public static class CategoryTools
                 {SqlQueries.CatCte}
                 SELECT ct.CAT_FULLNAME, c."Name", c."ShortName",
                        c."IsAreaCategory", c."ParentCategory",
-                       ce."Purpose", ce."Note", ce."Description", ce."UserManual"
+                       ce."Purpose", ce."Note", ce."Description", ce."UserManual",
+                       ce."CreatedOn", ce."CreatedBy", ce."UpdatedOn", ce."UpdatedBy"
                 FROM "Category" c
                 JOIN CAT_TREE ct ON ct."Oid" = c."Oid"
                 LEFT JOIN "CEntity" ce ON ce."Oid" = c."Oid"
@@ -404,6 +406,8 @@ public static class CategoryTools
                 lines.Add($"  Description      : {r.Str("Description")}");
             if (!string.IsNullOrEmpty(r.Str("UserManual")))
                 lines.Add($"  User manual      : {r.Str("UserManual")}");
+
+            lines.AddRange(QueryHelpers.FormatAuditLines(r, 17));
 
             return string.Join("\n", lines);
         }

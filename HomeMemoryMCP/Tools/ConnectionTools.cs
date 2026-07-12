@@ -261,7 +261,8 @@ public static class ConnectionTools
         "Full details of a single connection: category, status, source, destination, route, length, " +
         "purpose, note, description, and user manual. " +
         "Identify by name, optionally narrowed by source or destination when multiple connections share the same name. " +
-        "update_connection requires calling this first before modifying description, note, purpose, or user_manual.")]
+        "update_connection requires calling this first before modifying description, note, purpose, or user_manual. " +
+        "Returns creation metadata and, when available, last-update metadata; records imported from external tools may lack this data.")]
     public static string GetConnectionDetails(
         [Description("Connection name to look up")] string name,
         [Description("Full path of the source element – narrows search if name is ambiguous (optional)")] string? source = null,
@@ -316,6 +317,7 @@ public static class ConnectionTools
             var detail = FirebirdDb.ExecuteQuery(conn, """
                 SELECT c."Name", c."Source", c."Destination", c."Route", c."Length",
                        ce."Purpose", ce."Note", ce."Description", ce."UserManual",
+                       ce."CreatedOn", ce."CreatedBy", ce."UpdatedOn", ce."UpdatedBy",
                        cat."Name" AS CategoryName,
                        s."Name"   AS StatusName,
                        pt."Name"  AS PartTypeName
@@ -361,6 +363,8 @@ public static class ConnectionTools
 
             var userManual = d.Str("UserManual");
             if (!string.IsNullOrEmpty(userManual))  lines.Add($"  User manual : {userManual}");
+
+            lines.AddRange(QueryHelpers.FormatAuditLines(d, 12));
 
             return string.Join("\n", lines);
         }
