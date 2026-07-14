@@ -136,6 +136,7 @@
     "isPrimaryArea": false,
     "children": [
       { "name": "Air Conditioning", "shortName": null, "isPrimaryArea": false, "children": [] },
+      { "name": "Flue System",      "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Heating",          "shortName": null, "isPrimaryArea": false, "children": [] },
       { "name": "Ventilation",      "shortName": null, "isPrimaryArea": false, "children": [] }
     ]
