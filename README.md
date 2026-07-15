@@ -238,7 +238,7 @@ The release ZIP is a self-contained Windows build with all dependencies included
 
 ## HTTP mode (LAN, optional)
 
-Stdio is the default and works for almost everyone. HTTP mode lets you run Home Memory as a persistent service on a NAS, homelab box, or another machine on your LAN. See [docs/HTTP-MODE.md](docs/HTTP-MODE.md) for setup, database locking, LAN access, and optional Bearer authentication.
+Stdio is the default and works for almost everyone. HTTP mode lets you run Home Memory as a persistent service on a NAS, homelab box, or another machine on your LAN. See [docs/HTTP-MODE.md](docs/HTTP-MODE.md) for setup, database locking, LAN access, and HTTP security requirements.
 
 ## Architecture
 

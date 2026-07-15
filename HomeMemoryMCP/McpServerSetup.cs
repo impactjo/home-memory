@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Server;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -39,6 +40,114 @@ public static class McpServerSetup
                 TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
                 Converters = { new FlexBoolJsonConverterFactory() }
             });
+
+    /// <summary>
+    /// Validates the authentication boundary for HTTP mode. Loopback may run without
+    /// a key; every non-loopback listener requires one.
+    /// </summary>
+    public static void ValidateHttpSecurity(
+        IPAddress bindAddress,
+        string? apiKey,
+        string? allowedHosts = null)
+    {
+        ArgumentNullException.ThrowIfNull(bindAddress);
+
+        if (!IPAddress.IsLoopback(bindAddress) && string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException(
+                "HOME_MEMORY_API_KEY is required when HOME_MEMORY_BIND is not a loopback address.");
+        }
+
+        _ = ParseAllowedHosts(allowedHosts);
+    }
+
+    /// <summary>
+    /// Applies host, origin, and optional Bearer-token protection to the MCP endpoint.
+    /// Native MCP clients normally omit Origin. Browser-originated requests are rejected
+    /// because Home Memory does not expose a browser client.
+    /// </summary>
+    public static void UseHttpSecurity(
+        IApplicationBuilder app,
+        IPAddress bindAddress,
+        string? apiKey,
+        string? allowedHosts = null,
+        string protectedPath = "/mcp")
+    {
+        ValidateHttpSecurity(bindAddress, apiKey, allowedHosts);
+        var pathString = new PathString(protectedPath);
+        var configuredHosts = ParseAllowedHosts(allowedHosts);
+
+        app.Use(async (ctx, next) =>
+        {
+            if (ctx.Request.Path.StartsWithSegments(pathString))
+            {
+                if (!IsAllowedHost(ctx.Request.Host, bindAddress, configuredHosts))
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status400BadRequest;
+                    return;
+                }
+
+                if (ctx.Request.Headers.ContainsKey("Origin"))
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    return;
+                }
+            }
+
+            await next(ctx);
+        });
+
+        if (!string.IsNullOrWhiteSpace(apiKey))
+            UseBearerAuth(app, apiKey, protectedPath);
+    }
+
+    private static HashSet<string> ParseAllowedHosts(string? allowedHosts)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(allowedHosts))
+            return result;
+
+        foreach (var entry in allowedHosts.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            var host = entry.TrimEnd('.');
+            if (host.Contains('*'))
+                throw new InvalidOperationException("HOME_MEMORY_ALLOWED_HOSTS does not accept wildcard entries.");
+            result.Add(host);
+        }
+
+        return result;
+    }
+
+    private static bool IsAllowedHost(
+        HostString requestHost,
+        IPAddress bindAddress,
+        HashSet<string> configuredHosts)
+    {
+        var host = requestHost.Host.TrimEnd('.');
+        if (string.IsNullOrWhiteSpace(host))
+            return false;
+
+        if (host.Length >= 2 && host[0] == '[' && host[^1] == ']')
+            host = host[1..^1];
+
+        if (configuredHosts.Contains(host))
+            return true;
+
+        var isWildcard = bindAddress.Equals(IPAddress.Any) || bindAddress.Equals(IPAddress.IPv6Any);
+
+        if (IPAddress.TryParse(host, out var hostAddress))
+        {
+            if (isWildcard)
+                return true;
+
+            return IPAddress.IsLoopback(bindAddress)
+                ? IPAddress.IsLoopback(hostAddress)
+                : bindAddress.Equals(hostAddress);
+        }
+
+        return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            && (IPAddress.IsLoopback(bindAddress) || isWildcard);
+    }
 
     /// <summary>
     /// Bearer-token middleware. Compares the supplied token to <paramref name="apiKey"/>

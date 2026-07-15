@@ -4,12 +4,27 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using System.Net;
 
 var transport = Environment.GetEnvironmentVariable("HOME_MEMORY_TRANSPORT")?.Trim() ?? "stdio";
 var isHttp = string.Equals(transport, "http", StringComparison.OrdinalIgnoreCase);
+var httpBind = Environment.GetEnvironmentVariable("HOME_MEMORY_BIND")?.Trim() ?? "127.0.0.1";
+var httpPortEnv = Environment.GetEnvironmentVariable("HOME_MEMORY_PORT")?.Trim();
+var httpPort = int.TryParse(httpPortEnv, out var configuredPort) ? configuredPort : 5100;
+var httpApiKey = Environment.GetEnvironmentVariable("HOME_MEMORY_API_KEY");
+var httpAllowedHosts = Environment.GetEnvironmentVariable("HOME_MEMORY_ALLOWED_HOSTS");
+IPAddress? httpBindAddress = null;
 
 try
 {
+    if (isHttp)
+    {
+        if (!IPAddress.TryParse(httpBind, out httpBindAddress))
+            throw new InvalidOperationException("HOME_MEMORY_BIND must be an IPv4 or IPv6 address.");
+
+        McpServerSetup.ValidateHttpSecurity(httpBindAddress, httpApiKey, httpAllowedHosts);
+    }
+
     FirstRunSetup.EnsureDatabase();
     DbSchemaVerifier.Verify();
     DbMigrator.MigrateDatabase();
@@ -35,11 +50,6 @@ Console.Error.WriteLine($"[HomeMemory] Database: {DbConfig.Current.DisplayName}"
 
 if (isHttp)
 {
-    var bind = Environment.GetEnvironmentVariable("HOME_MEMORY_BIND")?.Trim() ?? "127.0.0.1";
-    var portEnv = Environment.GetEnvironmentVariable("HOME_MEMORY_PORT")?.Trim();
-    var port = int.TryParse(portEnv, out var p) ? p : 5100;
-    var apiKey = Environment.GetEnvironmentVariable("HOME_MEMORY_API_KEY");
-
     var diagnostics = string.Equals(
         Environment.GetEnvironmentVariable("HOME_MEMORY_HTTP_DIAGNOSTICS")?.Trim(),
         "1", StringComparison.Ordinal);
@@ -51,7 +61,7 @@ if (isHttp)
         builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
         builder.Logging.SetMinimumLevel(LogLevel.Trace);
     }
-    builder.WebHost.UseUrls($"http://{bind}:{port}");
+    builder.WebHost.ConfigureKestrel(options => options.Listen(httpBindAddress!, httpPort));
     McpServerSetup.AddHomeMcpServer(builder.Services, version).WithHttpTransport();
 
     var app = builder.Build();
@@ -59,17 +69,19 @@ if (isHttp)
     if (diagnostics)
         app.UseDeveloperExceptionPage();
 
-    if (!string.IsNullOrEmpty(apiKey))
-        McpServerSetup.UseBearerAuth(app, apiKey);
+    McpServerSetup.UseHttpSecurity(app, httpBindAddress!, httpApiKey, httpAllowedHosts);
 
     app.MapMcp("/mcp");
 
+    var displayHost = httpBindAddress!.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+        ? $"[{httpBindAddress}]"
+        : httpBindAddress.ToString();
+
     Console.Error.WriteLine($"[HomeMemory] Transport: HTTP");
-    Console.Error.WriteLine($"[HomeMemory] Listening: http://{bind}:{port}/mcp");
-    Console.Error.WriteLine($"[HomeMemory] Auth: {(!string.IsNullOrEmpty(apiKey) ? "Bearer token active" : "none (set HOME_MEMORY_API_KEY to enable)")}");
-    if (bind == "0.0.0.0" && string.IsNullOrEmpty(apiKey))
-        Console.Error.WriteLine($"[HomeMemory] Warning: bound to 0.0.0.0 without an API key - consider setting HOME_MEMORY_API_KEY");
-    Console.Error.WriteLine($"[HomeMemory] Note: HTTP mode - this process owns the database file");
+    Console.Error.WriteLine($"[HomeMemory] Listening: http://{displayHost}:{httpPort}/mcp");
+    Console.Error.WriteLine($"[HomeMemory] Auth: {(!string.IsNullOrWhiteSpace(httpApiKey) ? "Bearer token active" : "none (loopback only)")}");
+    Console.Error.WriteLine($"[HomeMemory] Request security: Host and Origin checks active");
+    Console.Error.WriteLine($"[HomeMemory] HTTP mode: this process owns the database file");
 
     await app.RunAsync();
 }
