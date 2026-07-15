@@ -322,7 +322,7 @@ public static class ElementTools
         }
         catch (Exception ex)
         {
-            return $"Error creating element: {ex.Message}";
+            return $"Error: failed to create element: {ex.Message}";
         }
     }
 
@@ -519,7 +519,7 @@ public static class ElementTools
         }
         catch (Exception ex)
         {
-            return $"Error updating element: {ex.Message}";
+            return $"Error: failed to update element: {ex.Message}";
         }
     }
 
@@ -586,7 +586,7 @@ public static class ElementTools
         }
         catch (Exception ex)
         {
-            return $"Error deleting element: {ex.Message}";
+            return $"Error: failed to delete element: {ex.Message}";
         }
     }
 
@@ -686,7 +686,7 @@ public static class ElementTools
         }
         catch (Exception ex)
         {
-            return $"Error moving element: {ex.Message}";
+            return $"Error: failed to move element: {ex.Message}";
         }
     }
 }

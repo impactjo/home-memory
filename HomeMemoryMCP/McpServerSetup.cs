@@ -2,6 +2,7 @@ using HomeMemory.MCP.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Net;
 using System.Security.Cryptography;
@@ -39,6 +40,25 @@ public static class McpServerSetup
             {
                 TypeInfoResolver = new System.Text.Json.Serialization.Metadata.DefaultJsonTypeInfoResolver(),
                 Converters = { new FlexBoolJsonConverterFactory() }
+            })
+            .WithRequestFilters(requestFilters =>
+            {
+                requestFilters.AddCallToolFilter(next => async (context, cancellationToken) =>
+                {
+                    var result = await next(context, cancellationToken);
+
+                    // Tool methods use a stable "Error:" prefix so direct C# callers
+                    // keep receiving plain text. At the MCP boundary, expose the same
+                    // text as a structured tool error for clients and models.
+                    if (result.IsError is not true && result.Content
+                            .OfType<TextContentBlock>()
+                            .Any(content => content.Text.StartsWith("Error:", StringComparison.Ordinal)))
+                    {
+                        result.IsError = true;
+                    }
+
+                    return result;
+                });
             });
 
     /// <summary>

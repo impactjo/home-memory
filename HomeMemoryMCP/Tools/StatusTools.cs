@@ -211,7 +211,7 @@ public static class StatusTools
         }
         catch (Exception ex)
         {
-            return $"Error updating status: {ex.Message}";
+            return $"Error: failed to update status: {ex.Message}";
         }
     }
 
@@ -280,7 +280,7 @@ public static class StatusTools
         }
         catch (Exception ex)
         {
-            return $"Error creating status: {ex.Message}";
+            return $"Error: failed to create status: {ex.Message}";
         }
     }
 
@@ -359,7 +359,7 @@ public static class StatusTools
         }
         catch (Exception ex)
         {
-            return $"Error deleting status: {ex.Message}";
+            return $"Error: failed to delete status: {ex.Message}";
         }
     }
 }

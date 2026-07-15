@@ -661,7 +661,7 @@ public static class CategoryTools
         }
         catch (Exception ex)
         {
-            return $"Error updating category: {ex.Message}";
+            return $"Error: failed to update category: {ex.Message}";
         }
     }
 
@@ -799,7 +799,7 @@ public static class CategoryTools
         }
         catch (Exception ex)
         {
-            return $"Error creating category: {ex.Message}";
+            return $"Error: failed to create category: {ex.Message}";
         }
     }
 
@@ -898,7 +898,7 @@ public static class CategoryTools
         }
         catch (Exception ex)
         {
-            return $"Error deleting category: {ex.Message}";
+            return $"Error: failed to delete category: {ex.Message}";
         }
     }
 }

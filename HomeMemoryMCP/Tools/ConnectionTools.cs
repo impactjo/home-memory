@@ -502,7 +502,7 @@ public static class ConnectionTools
         }
         catch (Exception ex)
         {
-            return $"Error creating connection: {ex.Message}";
+            return $"Error: failed to create connection: {ex.Message}";
         }
     }
 
@@ -761,7 +761,7 @@ public static class ConnectionTools
         }
         catch (Exception ex)
         {
-            return $"Error updating connection: {ex.Message}";
+            return $"Error: failed to update connection: {ex.Message}";
         }
     }
 
@@ -845,7 +845,7 @@ public static class ConnectionTools
         }
         catch (Exception ex)
         {
-            return $"Error deleting connection: {ex.Message}";
+            return $"Error: failed to delete connection: {ex.Message}";
         }
     }
 }
