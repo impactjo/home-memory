@@ -86,7 +86,7 @@ public static class CategoryTools
 
     // ── Tools ─────────────────────────────────────────────────────────────────
 
-    [McpServerTool(Name = "list_categories")]
+    [McpServerTool(Name = "list_categories", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Lists all object categories with item counts (elements, connections, part types, and other items, shown when non-zero). " +
         "Counts cover the category and its subcategories, matching what get_by_category and get_connections return; " +
@@ -163,7 +163,7 @@ public static class CategoryTools
         }
     }
 
-    [McpServerTool(Name = "get_by_category")]
+    [McpServerTool(Name = "get_by_category", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "All elements of an object category/trade, grouped by location. " +
         "Examples: get_by_category('Socket') → all sockets in the building; " +
@@ -264,7 +264,7 @@ public static class CategoryTools
 
     // ── Tool: get_category_details ────────────────────────────────────────────
 
-    [McpServerTool(Name = "get_category_details")]
+    [McpServerTool(Name = "get_category_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Full details of a single object category: path, parent, primary area flag, " +
         "direct and subtree item counts (elements, connections, part types, other; subtree spans subcategories at any depth), " +
@@ -419,7 +419,7 @@ public static class CategoryTools
 
     // ── Tool: update_category ─────────────────────────────────────────────────
 
-    [McpServerTool(Name = "update_category")]
+    [McpServerTool(Name = "update_category", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description(
         "Updates an existing object category: rename, change short name, description, primary area flag, or move to a different parent. " +
         "Required: category (current full path, e.g. 'Electrical/Lighting'). " +
@@ -667,7 +667,7 @@ public static class CategoryTools
 
     // ── Tool: create_category ──────────────────────────────────────────────────
 
-    [McpServerTool(Name = "create_category")]
+    [McpServerTool(Name = "create_category", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Creates a new object category. Use this when no suitable category exists for a new element or connection. " +
         "Required: name. Optional: parent (full category path, e.g. 'Electrical'), " +
@@ -805,7 +805,7 @@ public static class CategoryTools
 
     // ── Tool: delete_category ──────────────────────────────────────────────────
 
-    [McpServerTool(Name = "delete_category")]
+    [McpServerTool(Name = "delete_category", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
         "Permanently deletes an empty, unused category. " +
         "Required: category (full path, e.g. 'Electrical/Lighting'). " +

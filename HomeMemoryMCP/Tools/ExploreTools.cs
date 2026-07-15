@@ -9,7 +9,7 @@ namespace HomeMemory.MCP.Tools;
 [McpServerToolType]
 public static class ExploreTools
 {
-    [McpServerTool(Name = "get_structure_overview")]
+    [McpServerTool(Name = "get_structure_overview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Entry point: shows the building skeleton. " +
         "Elements are physical items (installed equipment, appliances, furniture, fixtures, tools, " +
@@ -210,7 +210,7 @@ public static class ExploreTools
         return result;
     }
 
-    [McpServerTool(Name = "find_element")]
+    [McpServerTool(Name = "find_element", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Searches ALL elements by name or full path (partial text, case-insensitive). Up to 100 results. " +
         "Elements are physical items at a location: installed equipment (socket, boiler, radiator), " +
@@ -432,7 +432,7 @@ public static class ExploreTools
         }
     }
 
-    [McpServerTool(Name = "list_elements")]
+    [McpServerTool(Name = "list_elements", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Lists the direct child elements of an element – both primary area elements " +
         "(rooms, areas) and devices/components. Shows exactly one level of children. " +
@@ -520,7 +520,7 @@ public static class ExploreTools
 
     // ── Tool: get_recent_changes ────────────────────────────────────────────
 
-    [McpServerTool(Name = "get_recent_changes")]
+    [McpServerTool(Name = "get_recent_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Shows recently created or updated items across elements, connections, and categories – " +
         "newest first. Useful after a documentation session to review what was added or changed. " +

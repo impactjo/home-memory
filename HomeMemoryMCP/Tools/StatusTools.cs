@@ -18,7 +18,7 @@ public static class StatusTools
 
     // ── Tool: list_statuses ───────────────────────────────────────────────────
 
-    [McpServerTool(Name = "list_statuses")]
+    [McpServerTool(Name = "list_statuses", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Lists all available statuses with reference counts, grouped by status type. " +
         "Counts are shown separately for elements, connections, part types, and other records (when non-zero). " +
@@ -93,7 +93,7 @@ public static class StatusTools
 
     // ── Tool: update_status ───────────────────────────────────────────────────
 
-    [McpServerTool(Name = "update_status")]
+    [McpServerTool(Name = "update_status", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description(
         "Updates an existing status: rename, change type, or update the note. " +
         "Required: name (current name to find the status). " +
@@ -217,7 +217,7 @@ public static class StatusTools
 
     // ── Tool: create_status ───────────────────────────────────────────────────
 
-    [McpServerTool(Name = "create_status")]
+    [McpServerTool(Name = "create_status", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Creates a new status value. " +
         "Required: name, status_type ('existing', 'planned', or 'removed'). " +
@@ -286,7 +286,7 @@ public static class StatusTools
 
     // ── Tool: delete_status ───────────────────────────────────────────────────
 
-    [McpServerTool(Name = "delete_status")]
+    [McpServerTool(Name = "delete_status", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
         "Permanently deletes a status value. " +
         "Required: name (current status name, case-insensitive). " +

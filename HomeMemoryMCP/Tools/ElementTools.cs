@@ -10,7 +10,7 @@ public static class ElementTools
 
     // ── get_element_details ───────────────────────────────────────────────────
 
-    [McpServerTool(Name = "get_element_details")]
+    [McpServerTool(Name = "get_element_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Full details of a single element: properties (category, status, part type, " +
         "purpose, note, description, user manual), direct child elements, " +
@@ -187,7 +187,7 @@ public static class ElementTools
 
     // ── create_element ────────────────────────────────────────────────────────
 
-    [McpServerTool(Name = "create_element")]
+    [McpServerTool(Name = "create_element", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Creates a new element. An element is any physical item in the building: " +
         "installed equipment (socket, boiler, radiator, circuit breaker), appliances (washing machine, fridge), " +
@@ -328,7 +328,7 @@ public static class ElementTools
 
     // ── update_element ────────────────────────────────────────────────────────
 
-    [McpServerTool(Name = "update_element")]
+    [McpServerTool(Name = "update_element", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description(
         "Updates an existing element. Required: fullname (exact full path – use find_element to look it up if unsure). " +
         "Only provided fields are changed; omitted fields stay untouched. " +
@@ -525,7 +525,7 @@ public static class ElementTools
 
     // ── delete_element ────────────────────────────────────────────────────────
 
-    [McpServerTool(Name = "delete_element")]
+    [McpServerTool(Name = "delete_element", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
         "Deletes an element from the database. " +
         "Fails if the element has child elements, connections, or attached documents. " +
@@ -592,7 +592,7 @@ public static class ElementTools
 
     // ── move_element ──────────────────────────────────────────────────────────
 
-    [McpServerTool(Name = "move_element")]
+    [McpServerTool(Name = "move_element", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
         "Moves an element to a different parent (or to top-level). " +
         "The element's full name and all descendant full names change automatically. " +

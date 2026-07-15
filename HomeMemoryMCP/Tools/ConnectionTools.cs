@@ -9,7 +9,7 @@ namespace HomeMemory.MCP.Tools;
 public static class ConnectionTools
 {
 
-    [McpServerTool(Name = "get_connections")]
+    [McpServerTool(Name = "get_connections", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "All connections of a category, grouped by source element. " +
         "A connection is a physical line (pipe, cable, duct, conduit) running from one element to another – " +
@@ -256,7 +256,7 @@ public static class ConnectionTools
 
     // ── Tool: get_connection_details ─────────────────────────────────────────
 
-    [McpServerTool(Name = "get_connection_details")]
+    [McpServerTool(Name = "get_connection_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Full details of a single connection: category, status, source, destination, route, length, " +
         "purpose, note, description, and user manual. " +
@@ -376,7 +376,7 @@ public static class ConnectionTools
 
     // ── Tool: create_connection ───────────────────────────────────────────────
 
-    [McpServerTool(Name = "create_connection")]
+    [McpServerTool(Name = "create_connection", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Creates a new connection between two elements. " +
         "A connection is a physical line (pipe, cable, duct, conduit) that runs from a source element " +
@@ -508,7 +508,7 @@ public static class ConnectionTools
 
     // ── Tool: update_connection ───────────────────────────────────────────────
 
-    [McpServerTool(Name = "update_connection")]
+    [McpServerTool(Name = "update_connection", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description(
         "Updates an existing connection. Only provided fields are changed. " +
         "Identify the connection by its current name, optionally narrowed by source/destination " +
@@ -767,7 +767,7 @@ public static class ConnectionTools
 
     // ── Tool: delete_connection ───────────────────────────────────────────────
 
-    [McpServerTool(Name = "delete_connection")]
+    [McpServerTool(Name = "delete_connection", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
         "Deletes a connection. Search is by name, optionally narrowed by source or destination " +
         "(use when multiple connections share the same name). " +
