@@ -315,7 +315,7 @@ internal static class QueryHelpers
         try
         {
             var rows = FirebirdDb.ExecuteQuery(conn,
-                """SELECT COUNT(*) AS CNT FROM "Document" WHERE "ConstructionEntity" = ?""", oid);
+                """SELECT COUNT(*) AS CNT FROM "Document" WHERE "Entity" = ?""", oid);
             var count = FirebirdDb.CountResult(rows);
             return count > 0
                 ? $"Error: element has {count} attached document(s). Remove them first."

@@ -430,7 +430,8 @@ public static class ElementTools
                 var newFullName       = parentPrefix + segment;
 
                 if (!string.Equals(newFullName, fullname, StringComparison.OrdinalIgnoreCase)
-                    && byFullName.ContainsKey(newFullName))
+                    && byFullName.TryGetValue(newFullName, out var conflictingRow)
+                    && !string.Equals(conflictingRow.Str("Oid"), oid, StringComparison.OrdinalIgnoreCase))
                     return $"Error: full name '{newFullName}' is already taken.";
 
                 var parentOidRaw = cur.GetValueOrDefault("PartOfElement");
