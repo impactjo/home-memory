@@ -2,7 +2,7 @@
 
 Home Memory ships with two transports:
 
-- **stdio** - the default. The AI client launches `HomeMemoryMCP.exe` directly. Recommended for local single-user setups (Claude Desktop, Codex App, Claude Code).
+- **stdio** - the default. The AI client launches `HomeMemoryMCP.exe` directly. Recommended for local single-user setups (ChatGPT desktop app, Claude Desktop, Claude Code).
 - **HTTP** - runs Home Memory as a long-lived local service on a port. Useful when you want one Home Memory process to serve clients that can't launch a stdio command directly, or when you want the server reachable from another machine on your LAN.
 
 Stdio is enough for almost everyone. HTTP is for advanced setups.
@@ -69,19 +69,21 @@ You should see:
 
 The endpoint speaks **Streamable HTTP** (the MCP transport variant). Pointing a browser at it will return a 4xx - that's expected; connect with an MCP client instead.
 
-## Connecting Codex App (native HTTP)
+## Connecting the ChatGPT desktop app (native HTTP)
 
-Codex App speaks Streamable HTTP natively. Point it at the URL directly.
+Codex in the ChatGPT desktop app supports Streamable HTTP natively. Point it at the URL directly.
 
-1. Open Codex App, **File > Settings**, select **MCP servers**
-2. Click **+ Add server**
-3. **Name:** `home-memory-http`
-4. Choose transport **Streamable HTTP**
-5. **URL:** `http://127.0.0.1:5100/mcp`
-6. For a loopback server started without `HOME_MEMORY_API_KEY`, leave **Bearer token env var** and **Headers** empty
-7. **Save**, then restart Codex App
+1. Open the ChatGPT desktop app and select **Codex**
+2. Open **Settings**
+3. Select **Plugins** in the navigation, then open the **MCPs** tab
+4. Click **+ Add server**
+5. **Name:** `home-memory-http`
+6. Choose transport **Streamable HTTP**
+7. **URL:** `http://127.0.0.1:5100/mcp`
+8. For a loopback server started without `HOME_MEMORY_API_KEY`, leave **Bearer token env var** and **Headers** empty
+9. **Save**, then restart the app
 
-For LAN setups, `HOME_MEMORY_API_KEY` is mandatory. In Codex App, **Bearer token env var** expects the **name** of an environment variable, not the token value itself. Set the variable persistently and restart Codex App so it picks up the new environment:
+For LAN setups, `HOME_MEMORY_API_KEY` is mandatory. In the ChatGPT desktop app, **Bearer token env var** expects the **name** of an environment variable, not the token value itself. Set the variable persistently and restart the app so it picks up the new environment:
 
 ```powershell
 setx HOME_MEMORY_API_KEY your-long-random-key
@@ -165,7 +167,7 @@ Then add the header on the client side. On Windows, pass the value through an en
 
 Without the header (or with the wrong key) the server returns `401 Unauthorized` and the client disconnects.
 
-For Codex App and Codex CLI, use the **Bearer token env var** field (or the `bearer_token_env_var` setting in `config.toml`). It expects the environment variable name, not the token value. See *Connecting Codex App* above.
+For the ChatGPT desktop app and Codex CLI, use the **Bearer token env var** field (or the `bearer_token_env_var` setting in `config.toml`). It expects the environment variable name, not the token value. See *Connecting the ChatGPT desktop app* above.
 
 ## Exposing on the LAN
 

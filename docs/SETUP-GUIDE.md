@@ -32,6 +32,17 @@ The server automatically sets the `FIREBIRD` environment variable (process-level
 
 ## Registering with an AI client
 
+### ChatGPT desktop app (Codex)
+
+1. Open the ChatGPT desktop app and select **Codex**
+2. Open **Settings**
+3. Select **Plugins** in the navigation, then open the **MCPs** tab
+4. Click **+ Add server**
+5. Set the name to `home-memory`
+6. Set the command to the full path of `HomeMemoryMCP.exe`, for example `C:\HomeMemory\HomeMemoryMCP.exe`
+7. Leave transport on **STDIO**
+8. Click **Save**, then restart the app if needed
+
 **Claude Code:**
 ```bash
 claude mcp add home-memory --scope user -- "/path/to/HomeMemoryMCP.exe"

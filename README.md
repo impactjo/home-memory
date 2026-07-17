@@ -22,7 +22,7 @@
 
 Home Memory is an [MCP server](https://modelcontextprotocol.io/) that gives your AI assistant structured, persistent knowledge about your home: every room, every device, every pipe and cable, every item you own.
 
-It works with AI clients on your computer that support MCP, including Claude Desktop, Claude Code, Codex App, Codex CLI, and others. You talk naturally; the AI reads and writes your home data through Home Memory's tools.
+It works with the ChatGPT desktop app, Claude Desktop, Claude Code, Codex CLI, and other MCP-compatible AI apps. You talk naturally; the AI reads and writes your home data through Home Memory's tools.
 
 Document what exists, plan what's coming, and keep track of what's been removed.
 
@@ -37,9 +37,9 @@ Tell your AI about your heat pump, your car, your power tools, or your wine coll
 </p>
 
 <p align="center">
-  <img src="docs/demo-codex.png" width="700" alt="Demo in Codex App: Same prompt, same result, works across AI clients.">
+  <img src="docs/demo-codex.png" width="700" alt="Demo with Codex: Same prompt, same result, works across AI clients.">
   <br>
-  <em>Codex App (OpenAI)</em>
+  <em>Codex (OpenAI)</em>
 </p>
 
 ## What you can do
@@ -88,15 +88,16 @@ The release ZIP is self-contained. No .NET, no Firebird, no other software to in
 Choose **one** of the following clients:
 
 <details>
-<summary><strong>Codex App (OpenAI)</strong></summary>
+<summary><strong>ChatGPT desktop app (Codex)</strong></summary>
 
-1. Open the Codex App
-2. Click **File > Settings**, then select **MCP servers** on the left
-3. Click **+ Add server**
-4. **Name:** `home-memory`
-5. **Command to launch:** `C:\HomeMemory\HomeMemoryMCP.exe`
-6. Leave transport on **STDIO** (default)
-7. Click **Save**, then restart the app if needed
+1. Open the ChatGPT desktop app and select **Codex**
+2. Open **Settings**
+3. Select **Plugins** in the navigation, then open the **MCPs** tab
+4. Click **+ Add server**
+5. **Name:** `home-memory`
+6. **Command to launch:** `C:\HomeMemory\HomeMemoryMCP.exe`
+7. Leave transport on **STDIO** (default)
+8. Click **Save**, then restart the app if needed
 
 Or via Codex CLI:
 ```bash
@@ -127,7 +128,7 @@ If you already have other MCP servers configured, add the `"home-memory"` entry 
 
 5. Save the file and restart Claude Desktop
 
-Home Memory is available in both the Chat tab and the Code tab. The **Code tab is recommended**: it runs in agentic mode with no tool-call limits, which works much better for MCP-heavy workflows.
+Home Memory is available in both the Chat tab and the Code tab. The **Code tab is recommended for multi-step, agentic workflows that use several MCP tools**.
 
 </details>
 
@@ -162,12 +163,12 @@ Creates a planned element, so you can track what exists and what's coming.
 
 ### 4. Use it from your phone (optional)
 
-Home Memory runs locally, but you can use it from your phone through the remote access features that Claude Code and Codex offer. In both cases your Home Memory database and MCP server stay on your machine; the phone is just a remote window into a session running on that host.
+Home Memory runs locally, but you can use it from your phone through remote access in Claude Code or the ChatGPT desktop app. In both cases your Home Memory database and MCP server stay on your machine; the phone is just a remote window into a session running on that host.
 
 Handy whenever you are away from your computer and want to look something up or capture it on the spot, whether at the fuse box, out in the garden, or snapping a photo of a new appliance.
 
 - **Claude Code:** start a local session, enable [Remote Control](https://code.claude.com/docs/en/remote-control), then continue it from the Claude mobile app or `claude.ai/code`. Requires a signed-in Claude account.
-- **Codex:** enable [remote connections](https://developers.openai.com/codex/remote-connections) in the Codex App on your host machine, then scan the QR code from the ChatGPT mobile app.
+- **ChatGPT desktop app:** start [Remote setup](https://learn.chatgpt.com/docs/remote-connections) on your host machine, then pair your phone by scanning the displayed QR code with the ChatGPT mobile app.
 
 ### Build from Source (advanced)
 
@@ -221,7 +222,7 @@ Every category, every element, every status is editable. Rename, add, or remove 
 
 | Client | Status |
 |---|---|
-| Codex App (OpenAI) | Tested |
+| ChatGPT desktop app (Codex) | Tested |
 | Claude Desktop (Chat tab + Code tab) | Tested |
 | Claude Code (CLI) | Tested |
 | Codex CLI (OpenAI) | Tested |
