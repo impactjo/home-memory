@@ -262,20 +262,20 @@ public static class ExploreTools
 
             if (!string.IsNullOrEmpty(searchTerm))
             {
-                var term = $"%{searchTerm.ToUpperInvariant()}%";
+                var term = $"%{FirebirdDb.EscapeLike(searchTerm.ToUpperInvariant())}%";
                 if (searchAllFields == true)
                 {
-                    conditions.Add("(UPPER(et.\"Name\") LIKE ? OR UPPER(et.FULLNAME) LIKE ?" +
-                                   " OR UPPER(ce.\"Purpose\") LIKE ? OR UPPER(ce.\"Note\") LIKE ?" +
-                                   " OR UPPER(ce.\"Description\") LIKE ? OR UPPER(ce.\"UserManual\") LIKE ?" +
-                                   " OR UPPER(et.\"Position\") LIKE ?)");
+                    conditions.Add("(UPPER(et.\"Name\") LIKE ? ESCAPE '\\' OR UPPER(et.FULLNAME) LIKE ? ESCAPE '\\'" +
+                                   " OR UPPER(ce.\"Purpose\") LIKE ? ESCAPE '\\' OR UPPER(ce.\"Note\") LIKE ? ESCAPE '\\'" +
+                                   " OR UPPER(ce.\"Description\") LIKE ? ESCAPE '\\' OR UPPER(ce.\"UserManual\") LIKE ? ESCAPE '\\'" +
+                                   " OR UPPER(et.\"Position\") LIKE ? ESCAPE '\\')");
                     paramList.Add(term); paramList.Add(term);
                     paramList.Add(term); paramList.Add(term);
                     paramList.Add(term); paramList.Add(term); paramList.Add(term);
                 }
                 else
                 {
-                    conditions.Add("(UPPER(et.\"Name\") LIKE ? OR UPPER(et.FULLNAME) LIKE ?)");
+                    conditions.Add("(UPPER(et.\"Name\") LIKE ? ESCAPE '\\' OR UPPER(et.FULLNAME) LIKE ? ESCAPE '\\')");
                     paramList.Add(term);
                     paramList.Add(term);
                 }
@@ -333,12 +333,7 @@ public static class ExploreTools
                 if (catError is not null) return catError;
                 catOids = catResolution?.Oids;
                 if (catOids is null)
-                {
-                    var desc2   = !string.IsNullOrEmpty(searchTerm) ? $"'{searchTerm}'" : "all elements";
-                    var scope2  = !string.IsNullOrEmpty(under)  ? $" under '{under}'"        : "";
-                    var stFilt2 = !string.IsNullOrEmpty(status) ? $" with status '{status}'" : "";
-                    return $"No elements found for {desc2}{scope2}{stFilt2} in category '{category}'.";
-                }
+                    return $"Error: category '{category}' not found. Call list_categories for available categories.";
             }
 
             // When filtering by category, fetch with CAT_OID and apply in-memory filter (OIDs are binary in Firebird).

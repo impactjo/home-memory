@@ -84,22 +84,22 @@ public static class ConnectionTools
             var paramList = new List<object?>();
             if (!string.IsNullOrEmpty(searchTerm))
             {
-                var term = $"%{searchTerm.ToUpperInvariant()}%";
+                var term = $"%{FirebirdDb.EscapeLike(searchTerm.ToUpperInvariant())}%";
                 if (searchAllFields == true)
                 {
-                    sql.Append(" AND (UPPER(c.\"Name\") LIKE ?" +
-                               " OR UPPER(c.\"Route\") LIKE ?" +
-                               " OR UPPER(ce.\"Purpose\") LIKE ?" +
-                               " OR UPPER(ce.\"Note\") LIKE ?" +
-                               " OR UPPER(ce.\"Description\") LIKE ?" +
-                               " OR UPPER(ce.\"UserManual\") LIKE ?)");
+                    sql.Append(" AND (UPPER(c.\"Name\") LIKE ? ESCAPE '\\'" +
+                               " OR UPPER(c.\"Route\") LIKE ? ESCAPE '\\'" +
+                               " OR UPPER(ce.\"Purpose\") LIKE ? ESCAPE '\\'" +
+                               " OR UPPER(ce.\"Note\") LIKE ? ESCAPE '\\'" +
+                               " OR UPPER(ce.\"Description\") LIKE ? ESCAPE '\\'" +
+                               " OR UPPER(ce.\"UserManual\") LIKE ? ESCAPE '\\')");
                     paramList.Add(term); paramList.Add(term);
                     paramList.Add(term); paramList.Add(term);
                     paramList.Add(term); paramList.Add(term);
                 }
                 else
                 {
-                    sql.Append(" AND UPPER(c.\"Name\") LIKE ?");
+                    sql.Append(" AND UPPER(c.\"Name\") LIKE ? ESCAPE '\\'");
                     paramList.Add(term);
                 }
             }
@@ -777,7 +777,8 @@ public static class ConnectionTools
     [Description(
         "Deletes a connection. Search is by name, optionally narrowed by source or destination " +
         "(use when multiple connections share the same name). " +
-        "Blocked if documents are attached – detach them first.")]
+        "Blocked if documents are attached. Treat this as a stop signal: report the attached documents " +
+        "and ask for explicit confirmation before detaching them. Never detach them on your own.")]
     public static string DeleteConnection(
         [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting'")] string name,
         [Description("Full path of the source element to narrow the search (optional)")] string? source = null,

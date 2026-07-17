@@ -27,7 +27,7 @@ public static class McpServerSetup
 
         Track physical elements across all home domains, organized with categories: building materials (walls, windows, flooring, roof) · electrical (circuits, lighting, outlets, PV/solar, wallbox, home automation) · HVAC · plumbing · IT & communications · security (alarm, fire protection, surveillance) · household (appliances, furniture, electronics, valuables) · vehicles (car, motorcycle, e-bike, bicycle, trailer) · tools · landscaping (garden, pool, irrigation) · health · and more. Categories are fully customizable: use the built-in ones, adapt them, or create your own. Statuses are customizable too and track lifecycle state such as existing, planned, or removed. All data persists in a local database across conversations.
 
-        IMPORTANT – destructive operations: When a deletion fails because child elements or connections exist, treat the error as a stop signal. Report the full blocked scope to the user and ask for explicit confirmation. Never cascade-delete by removing children or connections first without user confirmation.
+        IMPORTANT: destructive operations. When a deletion is blocked by child elements, connections, attached documents, category usage, status references, or another dependency, treat the error as a stop signal. Report the full blocked scope to the user and ask for explicit confirmation before modifying dependencies. Never remove, detach, reassign, or cascade-delete dependent records on your own.
         """;
 
     public static IMcpServerBuilder AddHomeMcpServer(IServiceCollection services, string version) =>

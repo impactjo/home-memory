@@ -290,8 +290,9 @@ public static class StatusTools
     [Description(
         "Permanently deletes a status value. " +
         "Required: name (current status name, case-insensitive). " +
-        "Blocked if any record (element, connection, part type, or other) references this status – " +
-        "reassign or remove the status on those records first. " +
+        "Blocked if any record (element, connection, part type, or other) references this status. " +
+        "Treat this as a stop signal: report the references and ask for explicit confirmation before " +
+        "reassigning or clearing the status on those records. Never modify the references on your own. " +
         "If the status name is not known, call list_statuses first. " +
         "Note: the three default statuses (Existing, Planned, Removed) should rarely be deleted.")]
     public static string DeleteStatus(
