@@ -320,8 +320,8 @@ public static class ExploreTools
                     }
                     else
                     {
-                        conditions.Add("UPPER(s.\"Name\") LIKE UPPER(?)");
-                        paramList.Add($"%{status.ToUpperInvariant()}%");
+                        conditions.Add("UPPER(s.\"Name\") LIKE UPPER(?) ESCAPE '\\'");
+                        paramList.Add($"%{FirebirdDb.EscapeLike(status.ToUpperInvariant())}%");
                     }
                 }
             }

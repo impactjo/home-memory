@@ -9,11 +9,11 @@ namespace HomeMemory.MCP.Tools;
 /// </summary>
 internal static class Validate
 {
-    // Forbidden characters for element/category/status names (SpecialCharactersNotAllowed)
-    // $*[{}|\<>?/";\: and tab
+    // Forbidden characters for element, category, and status names
+    // $*[{}]|\<>?/";\: and tab
     internal static readonly Regex InvalidChars = new(@"[\$\*\[\{\]\}\|\\<>\?/"";\:\t]");
 
-    // Forbidden characters for connection names (subset – connections allow more characters)
+    // Forbidden characters for connection names (connections allow a smaller set)
     internal static readonly Regex InvalidCharsConnection = new(@"[\*\|<>?""\t]");
 
     /// <summary>

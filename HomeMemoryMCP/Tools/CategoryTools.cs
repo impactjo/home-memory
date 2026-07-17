@@ -431,7 +431,7 @@ public static class CategoryTools
         "IMPORTANT: ALWAYS call get_category_details before updating purpose, note, description, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user/documentation guide -> user_manual (multiline, 4000 chars). " +
-        "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab. " +
+        "Forbidden characters in name/short_name: $*[{}]|\\<>?\"/;: and tab. " +
         "Note: renaming/moving a category automatically updates the full path of all subcategories " +
         "(FullName is computed dynamically – no stored paths need to be migrated).")]
     public static string UpdateCategory(
@@ -461,7 +461,7 @@ public static class CategoryTools
             if (string.IsNullOrEmpty(new_name))
                 return "Error: 'new_name' cannot be empty.";
             if (Validate.InvalidChars.IsMatch(new_name))
-                return "Error: new_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+                return "Error: new_name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
         }
 
         // Validate new_short_name
@@ -472,7 +472,7 @@ public static class CategoryTools
             if (string.IsNullOrEmpty(new_short_name))
                 return "Error: 'new_short_name' cannot be empty – use 'CLEAR' to remove it.";
             if (Validate.InvalidChars.IsMatch(new_short_name))
-                return "Error: new_short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+                return "Error: new_short_name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
         }
 
         purpose     = Validate.NormalizeClear(purpose);
@@ -675,7 +675,7 @@ public static class CategoryTools
         "is_primary_area (default false – primary areas are the main location containers " +
         "shown in the default structure overview, like Building/Floor/Room, not trades or surface zones). " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); documentation guide for this category -> user_manual (multiline, 4000 chars). " +
-        "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab. " +
+        "Forbidden characters in name/short_name: $*[{}]|\\<>?\"/;: and tab. " +
         "After creating, use the returned category path in create_element or create_connection.")]
     public static string CreateCategory(
         [Description("Category name, e.g. 'Pool Technology' or 'Solar'")] string name,
@@ -691,11 +691,11 @@ public static class CategoryTools
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required.";
         if (Validate.InvalidChars.IsMatch(name))
-            return "Error: name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+            return "Error: name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
 
         short_name = string.IsNullOrWhiteSpace(short_name) ? null : Validate.NormalizeSingleline(short_name)?.Trim();
         if (short_name != null && Validate.InvalidChars.IsMatch(short_name))
-            return "Error: short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+            return "Error: short_name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
 
         purpose     = Validate.NormalizeSingleline(purpose);
         note        = Validate.NormalizeSingleline(note);
@@ -742,7 +742,7 @@ public static class CategoryTools
             if (byFullName.ContainsKey(newFullName))
                 return $"Error: a category with full name '{newFullName}' already exists.";
 
-            // Check Name + ParentCategory uniqueness (ConstructionCategory_UniqueCombinationOfNameAndParentCategory)
+            // Check name uniqueness within the parent category.
             var nameCheckSql = parentOid != null
                 ? """SELECT COUNT(*) AS CNT FROM "Category" WHERE UPPER("Name") = UPPER(?) AND "ParentCategory" = ?"""
                 : """SELECT COUNT(*) AS CNT FROM "Category" WHERE UPPER("Name") = UPPER(?) AND "ParentCategory" IS NULL""";

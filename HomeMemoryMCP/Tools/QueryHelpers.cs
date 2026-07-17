@@ -259,7 +259,7 @@ internal static class QueryHelpers
     {
         var excludeClause = excludeOid != null ? """ AND "Oid" != ?""" : "";
 
-        // -- Name + PartOfElement must be unique (SkipNullOrEmptyValues = false) --
+        // Name must be unique within the same parent, including for top-level elements.
         string nameSql;
         List<object?> nameArgs;
         if (parentOid != null)
@@ -280,7 +280,7 @@ internal static class QueryHelpers
         if (FirebirdDb.CountResult(nameRows) > 0)
             return $"Error: a sibling element with name '{name}' already exists under the same parent.";
 
-        // -- ShortName + PartOfElement must be unique (SkipNullOrEmptyValues = true) --
+        // A non-empty short name must be unique within the same parent.
         if (!string.IsNullOrEmpty(shortName))
         {
             string snSql;
@@ -336,7 +336,7 @@ internal static class QueryHelpers
     {
         var advisories = new List<string>();
 
-        // ConstructionEntity_DeleteWarningIfDescriptionOrUserManualExists
+        // Warn when a description or user manual will be lost.
         try
         {
             var rows = FirebirdDb.ExecuteQuery(conn,
@@ -351,7 +351,7 @@ internal static class QueryHelpers
         }
         catch { /* ignore */ }
 
-        // ConstructionItem_DeleteWarningIfImagesAssignedExists
+        // Warn when image associations will be removed.
         // intermediate table: ImagesToCItems (FK: CItem → CItem.Oid, no CASCADE)
         try
         {

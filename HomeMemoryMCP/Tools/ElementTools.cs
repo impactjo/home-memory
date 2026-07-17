@@ -204,7 +204,7 @@ public static class ElementTools
         "Optional: parent (full path of the parent element), " +
         "short_name, status, purpose, note, description, user_manual, position. " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
-        "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab.")]
+        "Forbidden characters in name/short_name: $*[{}]|\\<>?\"/;: and tab.")]
     public static string CreateElement(
         [Description("Concise name for the element, typically the object/function type, e.g. 'Socket left', 'Boiler', 'Sofa'. Brand, model, dimensions, and purchase details usually do not belong in the name; put them in description when no other field already covers them. Keep brand/model in the name only when they are the common identifier, e.g. 'Hue Bridge'. Keep a short sibling differentiator such as 'left'/'right' or a number when siblings would otherwise be ambiguous.")] string name,
         [Description("Object category: name, short name, or full path (e.g. 'Electrical', 'Heating', 'Furniture', or 'Electrical/Cable' when the name is ambiguous). Required!")] string category,
@@ -221,11 +221,11 @@ public static class ElementTools
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required.";
         if (Validate.InvalidChars.IsMatch(name))
-            return "Error: name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+            return "Error: name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
 
         short_name = string.IsNullOrWhiteSpace(short_name) ? null : Validate.NormalizeSingleline(short_name)?.Trim();
         if (short_name != null && Validate.InvalidChars.IsMatch(short_name))
-            return "Error: short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+            return "Error: short_name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
 
         purpose     = Validate.NormalizeSingleline(purpose);
         note        = Validate.NormalizeSingleline(note);
@@ -339,7 +339,7 @@ public static class ElementTools
         "IMPORTANT: ALWAYS call get_element_details before updating purpose, description, note, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
-        "Forbidden characters in name/short_name: $*[{}|\\<>?\"/;: and tab.")]
+        "Forbidden characters in name/short_name: $*[{}]|\\<>?\"/;: and tab.")]
     public static string UpdateElement(
         [Description("Full name of the element, e.g. 'House/GF/Kitchen/South-Wall/Socket'")] string fullname,
         [Description("New name (optional). Changes the full path! Concise name for the element, typically the object/function type. Brand, model, dimensions, and purchase details usually do not belong in the name; put them in description when no other field already covers them. Keep brand/model in the name only when they are the common identifier, e.g. 'Hue Bridge'. Keep a short sibling differentiator such as 'left'/'right' or a number when siblings would otherwise be ambiguous.")] string? name = null,
@@ -393,7 +393,7 @@ public static class ElementTools
                 if (string.IsNullOrEmpty(name))
                     return "Error: 'name' cannot be empty.";
                 if (Validate.InvalidChars.IsMatch(name))
-                    return "Error: name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+                    return "Error: name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
             }
             if (short_name != null && short_name != "CLEAR")
             {
@@ -401,7 +401,7 @@ public static class ElementTools
                 if (string.IsNullOrEmpty(short_name))
                     return "Error: 'short_name' cannot be empty – use 'CLEAR' to remove it.";
                 if (Validate.InvalidChars.IsMatch(short_name))
-                    return "Error: short_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+                    return "Error: short_name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
             }
 
             var lenErr = Validate.Length(name, "name", 100)

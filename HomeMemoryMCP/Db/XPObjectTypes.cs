@@ -1,7 +1,7 @@
 namespace HomeMemory.MCP.Db;
 
 /// <summary>
-/// Resolves XPO ObjectType discriminator IDs dynamically from the XPObjectType table.
+/// Resolves object type discriminator IDs dynamically from the XPObjectType table.
 /// These IDs vary between installations and must never be hardcoded.
 /// Values are cached after the first lookup — one DB query per type per process lifetime.
 /// </summary>

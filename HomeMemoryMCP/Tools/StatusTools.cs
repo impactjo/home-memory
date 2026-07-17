@@ -100,7 +100,7 @@ public static class StatusTools
         "Optional: new_name, new_status_type ('existing', 'planned', or 'removed'), " +
         "note (CLEAR to remove). " +
         "At least one optional field must be provided. " +
-        "Forbidden characters in new_name: $*[{}|\\<>?\"/;: and tab.")]
+        "Forbidden characters in new_name: $*[{}]|\\<>?\"/;: and tab.")]
     public static string UpdateStatus(
         [Description("Current name of the status to update (case-insensitive).")] string name,
         [Description("New name (optional).")] string? new_name = null,
@@ -121,7 +121,7 @@ public static class StatusTools
             if (string.IsNullOrEmpty(new_name))
                 return "Error: 'new_name' cannot be empty.";
             if (Validate.InvalidChars.IsMatch(new_name))
-                return "Error: new_name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+                return "Error: new_name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
         }
 
         // Parse new_status_type
@@ -223,7 +223,7 @@ public static class StatusTools
         "Required: name, status_type ('existing', 'planned', or 'removed'). " +
         "Optional: note (short description of what this status means). " +
         "Name must be globally unique. " +
-        "Forbidden characters: $*[{}|\\<>?\"/;: and tab. " +
+        "Forbidden characters: $*[{}]|\\<>?\"/;: and tab. " +
         "After creating, use the name in create_element or update_element.")]
     public static string CreateStatus(
         [Description("Status name, e.g. 'Existing', 'Under Construction', 'Decommissioned'")] string name,
@@ -237,7 +237,7 @@ public static class StatusTools
         if (string.IsNullOrEmpty(name))
             return "Error: 'name' is required.";
         if (Validate.InvalidChars.IsMatch(name))
-            return "Error: name contains invalid characters ($*[{}|\\<>?\"/;: or tab).";
+            return "Error: name contains invalid characters ($*[{}]|\\<>?\"/;: or tab).";
         // Field length validation
         var lenErr = Validate.Length(name, "name", 100)
                   ?? Validate.Length(note?.Trim(), "note", 200);

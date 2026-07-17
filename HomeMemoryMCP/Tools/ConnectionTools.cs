@@ -136,8 +136,8 @@ public static class ConnectionTools
                     }
                     else
                     {
-                        sql.Append(" AND UPPER(s.\"Name\") LIKE UPPER(?)");
-                        paramList.Add($"%{status.ToUpperInvariant()}%");
+                        sql.Append(" AND UPPER(s.\"Name\") LIKE UPPER(?) ESCAPE '\\'");
+                        paramList.Add($"%{FirebirdDb.EscapeLike(status.ToUpperInvariant())}%");
                     }
                 }
             }
