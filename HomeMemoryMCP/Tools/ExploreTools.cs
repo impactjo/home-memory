@@ -31,7 +31,7 @@ public static class ExploreTools
         "x is the coupling indicator – how strongly a subtree is wired to the rest of the home.")]
     public static string GetStructureOverview(
         [Description("Show only primary areas (categories flagged as primary area). Primary areas are the main location containers shown in the default structure overview, e.g. buildings, floors, rooms, garages, outdoor areas. Default: true.")] bool primaryAreasOnly = true,
-        [Description("Maximum depth (relative to 'under' if specified). Default: auto – 3 for building overview; unlimited (full tree) when browsing area content (under + primaryAreasOnly=false).")] int maxDepth = 0,
+        [Description("Maximum depth relative to 'under' if specified. Values greater than 0 limit the returned tree. Default: unlimited for the primary-area overview; otherwise 3 for whole-building content and unlimited when browsing area content with under + primaryAreasOnly=false.")] int maxDepth = 0,
         [Description("Restrict tree to this sub-path, e.g. 'House/GF/Office'. Empty = entire building.")] string under = "",
         [Description("Set to \"counts\" to append per-node rollups [b… c… x…] (below, connections touching, connections crossing the boundary). Rollups always cover the full subtree, regardless of primaryAreasOnly/maxDepth/under. Default: empty (no metrics).")] string metrics = "")
     {
@@ -71,6 +71,8 @@ public static class ExploreTools
                     WHERE cat."IsAreaCategory" = True
                     """);
                 var paramList = new List<object?>();
+                if (maxDepth > 0)
+                    sql.Append($" AND et.DEPTH <= {depthOffset + maxDepth}");
                 if (!string.IsNullOrEmpty(under))
                 {
                     sql.Append(" AND (UPPER(et.FULLNAME) LIKE UPPER(?) ESCAPE '\\' OR UPPER(et.FULLNAME) = UPPER(?))");
@@ -79,7 +81,8 @@ public static class ExploreTools
                 }
                 sql.Append(" ORDER BY et.SORTPATH");
                 rows  = FirebirdDb.ExecuteQuery(conn, sql.ToString(), paramList.ToArray());
-                title = $"Building structure (areas{(under.Length > 0 ? $" under '{under}'" : "")}):";
+                var depthLabel = maxDepth > 0 ? $", depth {maxDepth}" : "";
+                title = $"Building structure (areas{depthLabel}{(under.Length > 0 ? $" under '{under}'" : "")}):";
             }
             else
             {

@@ -32,6 +32,12 @@ internal static class Validate
     }
 
     /// <summary>
+    /// Returns an error message unless the optional numeric value is greater than zero.
+    /// </summary>
+    public static string? Positive(decimal? value, string fieldName) =>
+        value is <= 0 ? $"Error: '{fieldName}' must be greater than 0." : null;
+
+    /// <summary>
     /// Normalizes a CLEAR keyword to the canonical uppercase form.
     /// Accepts 'clear', 'Clear', 'CLEAR', etc. Returns "CLEAR" or the original value unchanged.
     /// </summary>

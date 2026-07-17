@@ -163,6 +163,8 @@ public static class ConnectionTools
                 var srcFn = oidToFn.GetValueOrDefault(FirebirdDb.OidKey(r.GetValueOrDefault("Source")), "");
                 var dstFn = oidToFn.GetValueOrDefault(FirebirdDb.OidKey(r.GetValueOrDefault("Destination")), "");
                 if (!string.IsNullOrEmpty(under) &&
+                    !string.Equals(srcFn, under, StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(dstFn, under, StringComparison.OrdinalIgnoreCase) &&
                     !srcFn.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
                     !dstFn.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -431,7 +433,8 @@ public static class ConnectionTools
                   ?? Validate.Length(purpose?.Trim(), "purpose", 200)
                   ?? Validate.Length(note?.Trim(), "note", 200, "For permanent or longer information, use description instead.")
                   ?? Validate.Length(description?.Trim(), "description", 4000)
-                  ?? Validate.Length(user_manual?.Trim(), "user_manual", 4000);
+                  ?? Validate.Length(user_manual?.Trim(), "user_manual", 4000)
+                  ?? Validate.Positive(length, "length");
         if (lenErr != null) return lenErr;
 
         try
@@ -678,10 +681,13 @@ public static class ConnectionTools
                 if (length != "CLEAR")
                 {
                     if (!decimal.TryParse(length.Trim(),
-                            System.Globalization.NumberStyles.Number,
+                            System.Globalization.NumberStyles.AllowDecimalPoint |
+                            System.Globalization.NumberStyles.AllowLeadingSign,
                             System.Globalization.CultureInfo.InvariantCulture,
                             out var parsed))
-                        return $"Error: '{length}' is not a valid number for length.";
+                        return $"Error: '{length}' is not a valid number for length. Use a decimal point, e.g. 4.5.";
+                    var valueError = Validate.Positive(parsed, "length");
+                    if (valueError != null) return valueError;
                     newLength = parsed;
                 }
             }

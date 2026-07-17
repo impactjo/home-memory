@@ -40,6 +40,11 @@ catch (InvalidOperationException ex)
     Console.Error.WriteLine($"[HomeMemory] {ex.Message}");
     return;
 }
+catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+{
+    Console.Error.WriteLine($"[HomeMemory] {ex.Message}");
+    return;
+}
 
 var version = typeof(Program).Assembly
     .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()
