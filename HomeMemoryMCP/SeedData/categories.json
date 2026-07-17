@@ -15,8 +15,8 @@
           { "name": "Carport",     "shortName": null, "isPrimaryArea": true,  "children": [] },
           { "name": "Ceiling Area","shortName": null, "isPrimaryArea": false, "children": [] },
           { "name": "Facade Area", "shortName": null, "isPrimaryArea": true,  "children": [] },
-          { "name": "Floor",       "shortName": null, "isPrimaryArea": true,  "children": [] },
-          { "name": "Floor Area",  "shortName": null, "isPrimaryArea": false, "children": [] },
+          { "name": "Floor",       "shortName": null, "isPrimaryArea": true,  "purpose": "A complete level of a building.", "children": [] },
+          { "name": "Floor Area",  "shortName": null, "isPrimaryArea": false, "purpose": "A defined section of a floor, not a complete building level.", "children": [] },
           { "name": "Garage",      "shortName": null, "isPrimaryArea": true,  "children": [] },
           { "name": "House",       "shortName": null, "isPrimaryArea": true,  "children": [] },
           { "name": "Other Area",  "shortName": null, "isPrimaryArea": false, "children": [] },
@@ -174,7 +174,7 @@
         "shortName": null,
         "isPrimaryArea": false,
         "children": [
-          { "name": "Perimeter Protection", "shortName": null, "isPrimaryArea": false, "children": [] }
+          { "name": "Perimeter Protection", "shortName": null, "isPrimaryArea": false, "purpose": "Sensors that monitor doors, windows, and other openings in the building envelope.", "children": [] }
         ]
       },
       {
@@ -183,7 +183,7 @@
         "isPrimaryArea": false,
         "children": [
           { "name": "Fire Suppression", "shortName": null, "isPrimaryArea": false, "children": [] },
-          { "name": "Smoke Detector",   "shortName": null, "isPrimaryArea": false, "children": [] }
+          { "name": "Fire Detector",      "shortName": null, "isPrimaryArea": false, "children": [] }
         ]
       },
       { "name": "Surveillance", "shortName": null, "isPrimaryArea": false, "children": [] }
@@ -200,6 +200,7 @@
         "name": "Irrigation",
         "shortName": null,
         "isPrimaryArea": false,
+        "purpose": "Installed systems and components for watering outdoor areas and plants.",
         "children": [
           { "name": "Distribution", "shortName": null, "isPrimaryArea": false, "children": [] },
           { "name": "Sprinkler",    "shortName": null, "isPrimaryArea": false, "children": [] }
@@ -258,6 +259,7 @@
     "name": "Tools",
     "shortName": null,
     "isPrimaryArea": false,
+    "purpose": "Tools and work equipment that are not permanently installed as part of the building.",
     "children": []
   },
   {
