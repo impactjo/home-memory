@@ -467,6 +467,7 @@ public static class ConnectionTools
             }
 
             var hint = QueryHelpers.ConnectionSameSrcDstCategoryHint(conn, srcOid, dstOid, categoryOid);
+            var nameAdvisory = QueryHelpers.ConnectionSameNameAdvisory(conn, name);
 
             var oid = Guid.NewGuid().ToString("D");
             var now = DateTime.UtcNow;
@@ -500,7 +501,7 @@ public static class ConnectionTools
                     (object?)route?.Trim() ?? DBNull.Value,
                     (object?)length        ?? DBNull.Value);
 
-                return $"✓ Connection '{name}' created: {source} → {destination} (OID: {oid}).{hint}";
+                return $"✓ Connection '{name}' created: {source} → {destination} (OID: {oid}).{nameAdvisory}{hint}";
             });
         }
         catch (Exception ex)
@@ -707,6 +708,13 @@ public static class ConnectionTools
 
             var overwriteAdvisories = QueryHelpers.CollectOverwriteAdvisories(
                 conn, oid, description, note, purpose, user_manual);
+            var effectiveName = new_name ?? curConn.Str("Name");
+            var effectiveCategoryOid = categoryOid ?? curConn.Str("Category");
+            var effectiveSrcOid = newSrcOid ?? curConn.Str("Source");
+            var effectiveDstOid = newDstOid ?? curConn.Str("Destination");
+            var nameAdvisory = QueryHelpers.ConnectionSameNameAdvisory(conn, effectiveName, oid);
+            var combinationHint = QueryHelpers.ConnectionSameSrcDstCategoryHint(
+                conn, effectiveSrcOid, effectiveDstOid, effectiveCategoryOid, oid);
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
@@ -762,6 +770,7 @@ public static class ConnectionTools
                 var result = $"✓ Connection '{displayName}' updated.";
                 foreach (var adv in overwriteAdvisories)
                     result += $"\n  Advisory: {adv}.";
+                result += nameAdvisory + combinationHint;
                 return result;
             });
         }
@@ -828,11 +837,10 @@ public static class ConnectionTools
 
             var oid = matches[0].Str("Oid");
 
-            var docError = QueryHelpers.CheckDocumentsAttached(conn, oid);
-            if (docError != null) return docError.Replace("element", "connection");
+            var docError = QueryHelpers.CheckDocumentsAttached(conn, oid, "connection");
+            if (docError != null) return docError;
 
-            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, oid)
-                .Select(a => a.Replace("element", "connection")).ToList();
+            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, oid, "connection");
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {

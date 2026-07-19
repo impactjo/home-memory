@@ -203,6 +203,7 @@ public static class ElementTools
         "Use the parent path for location; do not repeat parent context in the element name. " +
         "Optional: parent (full path of the parent element), " +
         "short_name, status, purpose, note, description, user_manual, position. " +
+        "If both this element and its parent have explicit statuses, a conflicting child status is reported as an advisory. " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
         "Forbidden characters in name/short_name: $*[{}]|\\<>?\"/;: and tab.")]
     public static string CreateElement(
@@ -281,6 +282,8 @@ public static class ElementTools
                     return $"Error: status '{status}' not found. Call list_statuses for available statuses.";
             }
 
+            var parentStatusAdvisory = QueryHelpers.ElementParentStatusAdvisory(conn, statusOid, parentOid);
+
             var sortIndex = QueryHelpers.NextSortIndex(conn, parentOid);
             var oid = Guid.NewGuid().ToString("D");
             var now = DateTime.UtcNow;
@@ -317,7 +320,10 @@ public static class ElementTools
                     (object?)position?.Trim()    ?? DBNull.Value,
                     sortIndex);
 
-                return $"✓ Element '{newFullName}' created (OID: {oid}).";
+                var result = $"✓ Element '{newFullName}' created (OID: {oid}).";
+                if (parentStatusAdvisory != null)
+                    result += $"\n  Advisory: {parentStatusAdvisory}.";
+                return result;
             });
         }
         catch (Exception ex)
@@ -334,6 +340,7 @@ public static class ElementTools
         "Only provided fields are changed; omitted fields stay untouched. " +
         "Pass 'CLEAR' to empty an optional field (status, purpose, note, description, user_manual, position, short_name). " +
         "When changing category: call list_categories first. When changing status: call list_statuses first. " +
+        "If both this element and its parent have explicit statuses, a conflicting child status is reported as an advisory. " +
         "CAUTION: changing 'name' or 'short_name' changes the full path of this element and all its descendants. " +
         "Use the parent path for location; do not repeat parent context in the element name. " +
         "IMPORTANT: ALWAYS call get_element_details before updating purpose, description, note, or user_manual. " +
@@ -469,6 +476,19 @@ public static class ElementTools
                 }
             }
 
+            var relationshipRows = FirebirdDb.ExecuteQuery(conn, """
+                SELECT e."PartOfElement", ce."Status"
+                FROM "Element" e
+                JOIN "CEntity" ce ON ce."Oid" = e."Oid"
+                WHERE e."Oid" = ?
+                """, oid);
+            var currentParentOid = relationshipRows[0].Str("PartOfElement").NullIfEmpty();
+            var effectiveStatusOid = updateStatus
+                ? status == "CLEAR" ? null : statusOid
+                : relationshipRows[0].Str("Status").NullIfEmpty();
+            var parentStatusAdvisory = QueryHelpers.ElementParentStatusAdvisory(
+                conn, effectiveStatusOid, currentParentOid);
+
             var overwriteAdvisories = QueryHelpers.CollectOverwriteAdvisories(
                 conn, oid, description, note, purpose, user_manual);
 
@@ -515,6 +535,8 @@ public static class ElementTools
                 var result = $"✓ Element '{fullname}' updated.";
                 foreach (var adv in overwriteAdvisories)
                     result += $"\n  Advisory: {adv}.";
+                if (parentStatusAdvisory != null)
+                    result += $"\n  Advisory: {parentStatusAdvisory}.";
                 return result;
             });
         }
@@ -563,10 +585,10 @@ public static class ElementTools
             if (connCount > 0)
                 return $"Error: element has {connCount} connection(s). Report this to the user and ask for explicit confirmation before removing any of them.";
 
-            var docError = QueryHelpers.CheckDocumentsAttached(conn, oid);
+            var docError = QueryHelpers.CheckDocumentsAttached(conn, oid, "element");
             if (docError != null) return docError;
 
-            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, oid);
+            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, oid, "element");
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
@@ -600,6 +622,7 @@ public static class ElementTools
         "Fails if the new full name would conflict with an existing element, " +
         "if a sibling at the new parent has the same name or short name, " +
         "or if new_parent is a descendant of the element (circular reference). " +
+        "If both the moved element and its new parent have explicit statuses, a conflicting element status is reported as an advisory. " +
         "The element is appended at the end of the new parent's children.")]
     public static string MoveElement(
         [Description("Full name of the element to move, e.g. 'House/GF/Office/Socket'")] string fullname,
@@ -661,6 +684,12 @@ public static class ElementTools
             var siblingError = QueryHelpers.CheckSiblingUniqueness(conn, elemName, elemShortName, newParentOid, oid);
             if (siblingError != null) return siblingError;
 
+            var statusRows = FirebirdDb.ExecuteQuery(conn,
+                """SELECT "Status" FROM "CEntity" WHERE "Oid" = ?""", oid);
+            var elementStatusOid = statusRows[0].Str("Status").NullIfEmpty();
+            var parentStatusAdvisory = QueryHelpers.ElementParentStatusAdvisory(
+                conn, elementStatusOid, newParentOid);
+
             var sortIndex = QueryHelpers.NextSortIndex(conn, newParentOid);
             var now       = DateTime.UtcNow;
 
@@ -682,7 +711,10 @@ public static class ElementTools
                     sortIndex,
                     oid);
 
-                return $"✓ Element moved: '{fullname}' → '{newFullName}'.";
+                var result = $"✓ Element moved: '{fullname}' → '{newFullName}'.";
+                if (parentStatusAdvisory != null)
+                    result += $"\n  Advisory: {parentStatusAdvisory}.";
+                return result;
             });
         }
         catch (Exception ex)

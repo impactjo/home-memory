@@ -236,6 +236,34 @@ internal static class QueryHelpers
         return rows.Count > 0 ? rows[0].Str("Oid") : null;
     }
 
+    /// <summary>
+    /// Returns a non-blocking warning when an explicitly statused element is in an earlier
+    /// lifecycle phase than its explicitly statused parent. A missing status on either side
+    /// means "not specified" for validation and is intentionally skipped.
+    /// </summary>
+    internal static string? ElementParentStatusAdvisory(
+        FbConnection conn, string? elementStatusOid, string? parentOid)
+    {
+        if (string.IsNullOrEmpty(elementStatusOid) || string.IsNullOrEmpty(parentOid))
+            return null;
+
+        var rows = FirebirdDb.ExecuteQuery(conn, """
+            SELECT childStatus."Name" AS CHILD_NAME,
+                   childStatus."StatusType" AS CHILD_TYPE,
+                   parentStatus."Name" AS PARENT_NAME,
+                   parentStatus."StatusType" AS PARENT_TYPE
+            FROM "Status" childStatus
+            JOIN "CEntity" parentEntity ON parentEntity."Oid" = ?
+            JOIN "Status" parentStatus ON parentStatus."Oid" = parentEntity."Status"
+            WHERE childStatus."Oid" = ?
+              AND childStatus."StatusType" < parentStatus."StatusType"
+            """, parentOid, elementStatusOid);
+
+        if (rows.Count == 0) return null;
+        var row = rows[0];
+        return $"element status '{row.Str("CHILD_NAME")}' conflicts with parent status '{row.Str("PARENT_NAME")}'";
+    }
+
     internal static int NextSortIndex(FbConnection conn, string? parentOid)
     {
         var sql = parentOid != null
@@ -307,10 +335,10 @@ internal static class QueryHelpers
     }
 
     /// <summary>
-    /// Checks whether a document is attached to the element/connection (blocks deletion).
+    /// Checks whether a document is attached to an entity (blocks deletion).
     /// Returns error message or null if OK.
     /// </summary>
-    internal static string? CheckDocumentsAttached(FbConnection conn, string oid)
+    internal static string? CheckDocumentsAttached(FbConnection conn, string oid, string entityKind)
     {
         try
         {
@@ -318,7 +346,7 @@ internal static class QueryHelpers
                 """SELECT COUNT(*) AS CNT FROM "Document" WHERE "Entity" = ?""", oid);
             var count = FirebirdDb.CountResult(rows);
             return count > 0
-                ? $"Error: element has {count} attached document(s). Remove them first."
+                ? $"Error: {entityKind} has {count} attached document(s). Remove them first."
                 : null;
         }
         catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569)
@@ -332,7 +360,8 @@ internal static class QueryHelpers
     /// Collects advisory warnings for delete (non-blocking, shown as info after deletion).
     /// Returns list of advisory strings (empty = no warnings).
     /// </summary>
-    internal static List<string> CollectDeleteAdvisories(FbConnection conn, string oid)
+    internal static List<string> CollectDeleteAdvisories(
+        FbConnection conn, string oid, string entityKind)
     {
         var advisories = new List<string>();
 
@@ -346,7 +375,7 @@ internal static class QueryHelpers
                 var desc = rows[0].Str("Description");
                 var um   = rows[0].Str("UserManual");
                 if (!string.IsNullOrEmpty(desc) || !string.IsNullOrEmpty(um))
-                    advisories.Add("element had a description and/or user manual (data is lost)");
+                    advisories.Add($"{entityKind} had a description and/or user manual (data is lost)");
             }
         }
         catch { /* ignore */ }
@@ -464,5 +493,25 @@ internal static class QueryHelpers
                 : "";
         }
         catch { return ""; }
+    }
+
+    /// <summary>
+    /// Returns a warning when another connection uses the same name. The desktop model treats
+    /// this as a warning independently of the blocking name/category/source/destination rule.
+    /// </summary>
+    internal static string ConnectionSameNameAdvisory(
+        FbConnection conn, string name, string? excludeOid = null)
+    {
+        var excludeClause = excludeOid != null ? """ AND "Oid" != ?""" : "";
+        var args = excludeOid != null
+            ? new object?[] { name, excludeOid }
+            : new object?[] { name };
+        var rows = FirebirdDb.ExecuteQuery(conn,
+            $"""SELECT COUNT(*) AS CNT FROM "Connection" WHERE UPPER("Name") = UPPER(?){excludeClause}""",
+            args);
+        var count = FirebirdDb.CountResult(rows);
+        return count > 0
+            ? $"\n  Advisory: {count} other connection(s) with the same name already exist."
+            : "";
     }
 }

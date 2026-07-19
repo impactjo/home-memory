@@ -809,13 +809,14 @@ public static class CategoryTools
     [Description(
         "Permanently deletes an empty, unused category. " +
         "Required: category (full path, e.g. 'Electrical/Lighting'). " +
-        "Blocked if: (1) the category has child categories – ask the user how to handle them first; " +
-        "(2) any element, connection, or part type references this category – " +
-        "ask the user how to handle them first (use get_by_category for elements, get_connections for connections; part type references are not directly discoverable via MCP). " +
-        "When deletion fails for either reason, treat it as a stop signal: report the blocked scope and ask for explicit confirmation before taking further steps. " +
+        "Blocked if: (1) documents are attached to the category, remove them first; " +
+        "(2) the category has child categories, ask the user how to handle them first; " +
+        "(3) any element, connection, or part type references this category, ask the user how to handle them first " +
+        "(use get_by_category for elements, get_connections for connections; part type references are not directly discoverable via MCP). " +
+        "When deletion fails for any of these reasons, treat it as a stop signal: report the blocked scope and ask for explicit confirmation before taking further steps. " +
         "Warning: any purpose, note, description, or user manual stored on the category will be lost. " +
         "If the full path is not known, call list_categories first. " +
-        "Note: pre-seeded categories should rarely be deleted – consider update_category to rename instead.")]
+        "Note: pre-seeded categories should rarely be deleted; consider update_category to rename instead.")]
     public static string DeleteCategory(
         [Description("Full path of the category to delete, e.g. 'Electrical/Lighting'. Call list_categories if unsure.")] string category)
     {
@@ -837,6 +838,9 @@ public static class CategoryTools
                 return $"Error: category '{category}' not found. Call list_categories to see available categories.";
 
             var oid = catRow.Str("Oid");
+
+            var docError = QueryHelpers.CheckDocumentsAttached(conn, oid, "category");
+            if (docError != null) return docError;
 
             // Blocking check 1: child categories
             var childRows  = FirebirdDb.ExecuteQuery(conn,
@@ -885,6 +889,8 @@ public static class CategoryTools
                        string.Join("; ", hints) + ".";
             }
 
+            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, oid, "category");
+
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
                 // Delete Category row first (FK to CEntity.Oid), then the CEntity base row
@@ -893,7 +899,10 @@ public static class CategoryTools
                 FirebirdDb.ExecuteNonQuery(conn, txn,
                     """DELETE FROM "CEntity" WHERE "Oid" = ?""", oid);
 
-                return $"✓ Category '{category}' deleted.";
+                var result = $"✓ Category '{category}' deleted.";
+                if (advisories.Count > 0)
+                    result += $"\n  Advisory: {string.Join("; ", advisories)}.";
+                return result;
             });
         }
         catch (Exception ex)
