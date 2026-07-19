@@ -15,27 +15,30 @@ public static class ElementTools
         "Full details of a single element: properties (category, status, part type, " +
         "purpose, note, description, user manual), direct child elements, " +
         "and all incoming and outgoing connections (physical lines: pipes, cables, ducts). " +
-        "Use when the exact path is known and you need details or connections. " +
+        "Identify the element by exact full path or OID. Use when you need details or connections. " +
         "An element is any physical item in the building: installed equipment, appliance, " +
         "furniture, fixture, tool, or location container (room, floor, etc.). " +
-        "Returns creation metadata and, when available, last-update metadata; records imported from external tools may lack this data.")]
+        "Returns the stable OID, version, creation metadata and, when available, last-update metadata; records imported from external tools may lack audit data.")]
     public static string GetElementDetails(
-        [Description("Full name path, e.g. 'House/GF/Kitchen/South-Wall/Socket'")] string fullname)
+        [Description("Full name path, e.g. 'House/GF/Kitchen/South-Wall/Socket'. Optional when oid is provided.")] string fullname = "",
+        [Description("Stable element OID returned by create_element or this tool. Optional when fullname is provided.")] string? oid = null)
     {
-        var fn = fullname.Trim();
-        if (string.IsNullOrEmpty(fn))
-            return "Error: 'fullname' is required.";
+        var fn = fullname?.Trim() ?? "";
 
         try
         {
             using var conn = FirebirdDb.OpenConnection();
 
-            var resolvedFn = QueryHelpers.ResolveElementFullName(conn, fn);
-            if (resolvedFn is null)
-                return $"Error: element '{fn}' not found. Use find_element to search for the correct path.";
-            fn = resolvedFn;
+            var (allElements, byOid, byFullName) = QueryHelpers.LoadEtree(conn);
+            var resolution = QueryHelpers.ResolveElementSelector(byOid, byFullName, fn, oid);
+            if (resolution.error != null)
+                return string.IsNullOrWhiteSpace(oid)
+                    && resolution.error.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                    ? resolution.error + " Use find_element to search for the correct path."
+                    : resolution.error;
+            fn = resolution.canonicalFullName;
 
-            var allElements = FirebirdDb.ExecuteQuery(conn,
+            allElements = FirebirdDb.ExecuteQuery(conn,
                 $"{SqlQueries.EtreeCte} SELECT \"Oid\", FULLNAME, \"Name\", \"ShortName\", \"Position\" FROM ETREE");
 
             var oidToRow = allElements.ToDictionary(
@@ -43,16 +46,18 @@ public static class ElementTools
                 r => r,
                 StringComparer.OrdinalIgnoreCase);
 
+            var targetOidKey = FirebirdDb.OidKey(resolution.row!["Oid"]);
             var target = allElements.FirstOrDefault(r =>
-                string.Equals(r.Str("FULLNAME"), fn, StringComparison.OrdinalIgnoreCase));
+                FirebirdDb.OidKey(r["Oid"]).Equals(targetOidKey, StringComparison.OrdinalIgnoreCase));
 
             if (target is null)
                 return $"Error: element '{fn}' not found. Use find_element to search for the correct path.";
 
-            var oid    = target["Oid"];
-            var oidKey = FirebirdDb.OidKey(oid);
+            var targetOid = target["Oid"];
+            var oidKey = FirebirdDb.OidKey(targetOid);
             var lines  = new List<string> { $"Element: {target.Str("FULLNAME")}\n" };
 
+            lines.Add($"  OID         : {FirebirdDb.Str(targetOid)}");
             lines.Add($"  Name        : {target.Str("Name")}");
             var sn = target.Str("ShortName");
             if (!string.IsNullOrEmpty(sn)) lines.Add($"  Short name  : {sn}");
@@ -69,6 +74,7 @@ public static class ElementTools
                     ce."CreatedBy",
                     ce."UpdatedOn",
                     ce."UpdatedBy",
+                    ce."OptimisticLockField",
                     s."Name"   AS StatusName,
                     cat."Name" AS CategoryName,
                     pt."Name"  AS PartTypeName
@@ -79,11 +85,12 @@ public static class ElementTools
                 LEFT JOIN "Part"     p   ON p."Oid"    = ce."Oid"
                 LEFT JOIN "PartType" pt  ON pt."Oid"   = p."PartType"
                 WHERE ce."Oid" = ?
-                """, oid);
+                """, targetOid);
 
             if (ext.Count > 0)
             {
                 var e = ext[0];
+                lines.Add($"  Version     : {e.Int("OptimisticLockField")}");
                 if (!string.IsNullOrEmpty(e.Str("CategoryName")))
                     lines.Add($"  Category    : {e.Str("CategoryName")}");
                 if (!string.IsNullOrEmpty(e.Str("StatusName")))
@@ -107,7 +114,7 @@ public static class ElementTools
                 FROM "Element"
                 WHERE "PartOfElement" = ?
                 ORDER BY "SortIndex" NULLS LAST, "Name"
-                """, oid);
+                """, targetOid);
 
             var fnPrefix = fn.TrimEnd('/') + "/";
             int totalDescendants = allElements.Count(r =>
@@ -131,7 +138,7 @@ public static class ElementTools
                 FROM "Connection"
                 WHERE "Source" = ?
                 ORDER BY "Name"
-                """, oid);
+                """, targetOid);
 
             if (connOut.Count > 0)
             {
@@ -155,7 +162,7 @@ public static class ElementTools
                 FROM "Connection"
                 WHERE "Destination" = ?
                 ORDER BY "Name"
-                """, oid);
+                """, targetOid);
 
             if (connIn.Count > 0)
             {
@@ -336,7 +343,7 @@ public static class ElementTools
 
     [McpServerTool(Name = "update_element", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description(
-        "Updates an existing element. Required: fullname (exact full path – use find_element to look it up if unsure). " +
+        "Updates an existing element identified by exact full path or stable OID. Use find_element if the path is unknown. " +
         "Only provided fields are changed; omitted fields stay untouched. " +
         "Pass 'CLEAR' to empty an optional field (status, purpose, note, description, user_manual, position, short_name). " +
         "When changing category: call list_categories first. When changing status: call list_statuses first. " +
@@ -346,9 +353,10 @@ public static class ElementTools
         "IMPORTANT: ALWAYS call get_element_details before updating purpose, description, note, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
+        "Pass expected_version from get_element_details to prevent overwriting a concurrent change. " +
         "Forbidden characters in name/short_name: $*[{}]|\\<>?\"/;: and tab.")]
     public static string UpdateElement(
-        [Description("Full name of the element, e.g. 'House/GF/Kitchen/South-Wall/Socket'")] string fullname,
+        [Description("Full name of the element. Optional when oid is provided.")] string fullname = "",
         [Description("New name (optional). Changes the full path! Concise name for the element, typically the object/function type. Brand, model, dimensions, and purchase details usually do not belong in the name; put them in description when no other field already covers them. Keep brand/model in the name only when they are the common identifier, e.g. 'Hue Bridge'. Keep a short sibling differentiator such as 'left'/'right' or a number when siblings would otherwise be ambiguous.")] string? name = null,
         [Description("New short name (optional, 'CLEAR' to remove). Changes the full path! Optional concise path segment, mainly for location containers. Must be unique among siblings; omit when it would be the same as name.")] string? short_name = null,
         [Description("New category: name, short name, or full path (e.g. 'Electrical/Cable' when the name is ambiguous). Cannot be cleared – required field.")] string? category = null,
@@ -357,11 +365,13 @@ public static class ElementTools
         [Description("Short temporary to-do during planning/construction. For permanent technical info use description instead ('CLEAR' to remove)")] string? note = null,
         [Description("Permanent technical information for professionals (default for longer-lived info): installation specifics, maintenance history, test results, brand, model, dimensions, purchase info — anything not already covered by other fields ('CLEAR' to remove)")] string? description = null,
         [Description("User-facing information: operating instructions, feature overview, maintenance schedule (what/when/how), troubleshooting tips ('CLEAR' to remove)")] string? user_manual = null,
-        [Description("Fine-grained location within the parent, such as 'under sink' or '136 cm from left' ('CLEAR' to remove). Use this instead of putting precise positional details into the name. Only fill with information the user explicitly provided.")] string? position = null)
+        [Description("Fine-grained location within the parent, such as 'under sink' or '136 cm from left' ('CLEAR' to remove). Use this instead of putting precise positional details into the name. Only fill with information the user explicitly provided.")] string? position = null,
+        [Description("Stable element OID. Optional when fullname is provided. When both are supplied, they must identify the same element.")] string? oid = null,
+        [Description("Version returned by get_element_details. When supplied, the update fails if the element changed meanwhile.")] int? expected_version = null)
     {
         fullname = fullname?.Trim() ?? "";
-        if (string.IsNullOrEmpty(fullname))
-            return "Error: 'fullname' is required.";
+        var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
+        if (versionError != null) return versionError;
 
         if (name == null && short_name == null && category == null && status == null
             && purpose == null && note == null && description == null
@@ -385,13 +395,13 @@ public static class ElementTools
         try
         {
             using var conn = FirebirdDb.OpenConnection();
-            var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
+            var (_, byOid, byFullName) = QueryHelpers.LoadEtree(conn);
+            var resolution = QueryHelpers.ResolveElementSelector(byOid, byFullName, fullname, oid);
+            if (resolution.error != null) return resolution.error;
+            var targetRow = resolution.row!;
+            fullname = resolution.canonicalFullName;
 
-            if (!QueryHelpers.TryResolveElementRow(byFullName, fullname, out var targetRow, out var canonicalFullname))
-                return $"Error: element '{fullname}' not found.";
-            fullname = canonicalFullname;
-
-            var oid = targetRow.Str("Oid");
+            var targetOid = targetRow.Str("Oid");
             var now = DateTime.UtcNow;
 
             if (name != null)
@@ -423,7 +433,7 @@ public static class ElementTools
             if (name != null || short_name != null)
             {
                 var curRows = FirebirdDb.ExecuteQuery(conn,
-                    """SELECT "Name", "ShortName", "PartOfElement" FROM "Element" WHERE "Oid" = ?""", oid);
+                    """SELECT "Name", "ShortName", "PartOfElement" FROM "Element" WHERE "Oid" = ?""", targetOid);
                 if (curRows.Count == 0) return "Error: element not found in Element table.";
                 var cur = curRows[0];
 
@@ -438,14 +448,14 @@ public static class ElementTools
 
                 if (!string.Equals(newFullName, fullname, StringComparison.OrdinalIgnoreCase)
                     && byFullName.TryGetValue(newFullName, out var conflictingRow)
-                    && !string.Equals(conflictingRow.Str("Oid"), oid, StringComparison.OrdinalIgnoreCase))
+                    && !string.Equals(conflictingRow.Str("Oid"), targetOid, StringComparison.OrdinalIgnoreCase))
                     return $"Error: full name '{newFullName}' is already taken.";
 
                 var parentOidRaw = cur.GetValueOrDefault("PartOfElement");
                 var parentOid    = parentOidRaw != null && parentOidRaw != DBNull.Value
                     ? FirebirdDb.Str(parentOidRaw)
                     : null;
-                var siblingError = QueryHelpers.CheckSiblingUniqueness(conn, newName, newShortName, parentOid, oid);
+                var siblingError = QueryHelpers.CheckSiblingUniqueness(conn, newName, newShortName, parentOid, targetOid);
                 if (siblingError != null) return siblingError;
             }
 
@@ -481,7 +491,7 @@ public static class ElementTools
                 FROM "Element" e
                 JOIN "CEntity" ce ON ce."Oid" = e."Oid"
                 WHERE e."Oid" = ?
-                """, oid);
+                """, targetOid);
             var currentParentOid = relationshipRows[0].Str("PartOfElement").NullIfEmpty();
             var effectiveStatusOid = updateStatus
                 ? status == "CLEAR" ? null : statusOid
@@ -490,47 +500,46 @@ public static class ElementTools
                 conn, effectiveStatusOid, currentParentOid);
 
             var overwriteAdvisories = QueryHelpers.CollectOverwriteAdvisories(
-                conn, oid, description, note, purpose, user_manual);
+                conn, targetOid, description, note, purpose, user_manual);
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
-                FirebirdDb.ExecuteNonQuery(conn, txn, """
-                    UPDATE "CEntity" SET
-                        "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1,
-                        "UpdatedOn" = ?,
-                        "UpdatedBy" = ?
-                    WHERE "Oid" = ?
-                    """, now, "HomeMemory", oid);
+                if (!QueryHelpers.TouchCEntity(
+                        conn, txn, targetOid, now, "HomeMemory", expected_version))
+                    return expected_version.HasValue
+                        ? QueryHelpers.VersionConflict(
+                            "element", expected_version.Value, "get_element_details")
+                        : "Error: element no longer exists. Call get_element_details again.";
 
                 if (updateStatus)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "CEntity" SET "Status" = ? WHERE "Oid" = ?""",
-                        status == "CLEAR" ? DBNull.Value : (object)statusOid!, oid);
+                        status == "CLEAR" ? DBNull.Value : (object)statusOid!, targetOid);
 
-                QueryHelpers.SetCEntityField(conn, txn, oid, "Purpose",     purpose);
-                QueryHelpers.SetCEntityField(conn, txn, oid, "Note",        note);
-                QueryHelpers.SetCEntityField(conn, txn, oid, "Description", description);
-                QueryHelpers.SetCEntityField(conn, txn, oid, "UserManual",  user_manual);
+                QueryHelpers.SetCEntityField(conn, txn, targetOid, "Purpose",     purpose);
+                QueryHelpers.SetCEntityField(conn, txn, targetOid, "Note",        note);
+                QueryHelpers.SetCEntityField(conn, txn, targetOid, "Description", description);
+                QueryHelpers.SetCEntityField(conn, txn, targetOid, "UserManual",  user_manual);
 
                 if (updateCategory)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "CItem" SET "Category" = ? WHERE "Oid" = ?""",
-                        (object?)categoryOid ?? DBNull.Value, oid);
+                        (object?)categoryOid ?? DBNull.Value, targetOid);
 
                 if (name != null)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "Element" SET "Name" = ? WHERE "Oid" = ?""",
-                        name, oid);
+                        name, targetOid);
 
                 if (short_name != null)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "Element" SET "ShortName" = ? WHERE "Oid" = ?""",
-                        short_name == "CLEAR" ? DBNull.Value : (object)short_name, oid);
+                        short_name == "CLEAR" ? DBNull.Value : (object)short_name, targetOid);
 
                 if (position != null)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "Element" SET "Position" = ? WHERE "Oid" = ?""",
-                        position == "CLEAR" ? DBNull.Value : (object)position.Trim(), oid);
+                        position == "CLEAR" ? DBNull.Value : (object)position.Trim(), targetOid);
 
                 var result = $"✓ Element '{fullname}' updated.";
                 foreach (var adv in overwriteAdvisories)
@@ -553,53 +562,61 @@ public static class ElementTools
         "Deletes an element from the database. " +
         "Fails if the element has child elements, connections, or attached documents. " +
         "When deletion fails for this reason, treat it as a stop signal: report the affected scope to the user and ask for explicit confirmation – never cascade-delete by removing children or connections first on your own. " +
+        "Identify by exact full path or stable OID. Pass expected_version from get_element_details to prevent deleting a concurrently changed element. " +
         "Deletes from all 4 database tables (Element, Part, CItem, CEntity) in a single transaction.")]
     public static string DeleteElement(
-        [Description("Full name of the element, e.g. 'House/GF/Kitchen/South-Wall/Socket'")] string fullname)
+        [Description("Full name of the element. Optional when oid is provided.")] string fullname = "",
+        [Description("Stable element OID. Optional when fullname is provided. When both are supplied, they must identify the same element.")] string? oid = null,
+        [Description("Version returned by get_element_details. When supplied, deletion fails if the element changed meanwhile.")] int? expected_version = null)
     {
         fullname = fullname?.Trim() ?? "";
-        if (string.IsNullOrEmpty(fullname))
-            return "Error: 'fullname' is required.";
+        var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
+        if (versionError != null) return versionError;
 
         try
         {
             using var conn = FirebirdDb.OpenConnection();
-            var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
+            var (_, byOid, byFullName) = QueryHelpers.LoadEtree(conn);
+            var resolution = QueryHelpers.ResolveElementSelector(byOid, byFullName, fullname, oid);
+            if (resolution.error != null) return resolution.error;
+            fullname = resolution.canonicalFullName;
 
-            if (!QueryHelpers.TryResolveElementRow(byFullName, fullname, out var targetRow, out var canonicalFullname))
-                return $"Error: element '{fullname}' not found.";
-            fullname = canonicalFullname;
-
-            var oid = targetRow.Str("Oid");
+            var targetOid = resolution.row!.Str("Oid");
 
             var children   = FirebirdDb.ExecuteQuery(conn,
-                """SELECT COUNT(*) AS CNT FROM "Element" WHERE "PartOfElement" = ?""", oid);
+                """SELECT COUNT(*) AS CNT FROM "Element" WHERE "PartOfElement" = ?""", targetOid);
             var childCount = FirebirdDb.CountResult(children);
             if (childCount > 0)
                 return $"Error: element has {childCount} child element(s). Report this to the user and ask for explicit confirmation before removing any of them.";
 
             var connections = FirebirdDb.ExecuteQuery(conn,
                 """SELECT COUNT(*) AS CNT FROM "Connection" WHERE "Source" = ? OR "Destination" = ?""",
-                oid, oid);
+                targetOid, targetOid);
             var connCount = FirebirdDb.CountResult(connections);
             if (connCount > 0)
                 return $"Error: element has {connCount} connection(s). Report this to the user and ask for explicit confirmation before removing any of them.";
 
-            var docError = QueryHelpers.CheckDocumentsAttached(conn, oid, "element");
+            var docError = QueryHelpers.CheckDocumentsAttached(conn, targetOid, "element");
             if (docError != null) return docError;
 
-            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, oid, "element");
+            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, targetOid, "element");
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Element"        WHERE "Oid"   = ?""", oid);
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Part"           WHERE "Oid"   = ?""", oid);
+                if (expected_version.HasValue
+                    && !QueryHelpers.TouchCEntity(
+                        conn, txn, targetOid, DateTime.UtcNow, "HomeMemory", expected_version))
+                    return QueryHelpers.VersionConflict(
+                        "element", expected_version.Value, "get_element_details");
+
+                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Element"        WHERE "Oid"   = ?""", targetOid);
+                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Part"           WHERE "Oid"   = ?""", targetOid);
                 // Remove image associations before CItem (FK has no CASCADE).
                 // Table may not exist in all DB versions – skip silently (mirrors CollectDeleteAdvisories read-path).
-                try { FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "ImagesToCItems" WHERE "CItem" = ?""", oid); }
+                try { FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "ImagesToCItems" WHERE "CItem" = ?""", targetOid); }
                 catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569) { /* table absent – skip */ }
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", oid);
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", oid);
+                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", targetOid);
+                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", targetOid);
 
                 var result = $"✓ Element '{fullname}' deleted.";
                 if (advisories.Count > 0)
@@ -623,38 +640,44 @@ public static class ElementTools
         "if a sibling at the new parent has the same name or short name, " +
         "or if new_parent is a descendant of the element (circular reference). " +
         "If both the moved element and its new parent have explicit statuses, a conflicting element status is reported as an advisory. " +
+        "Identify the element and optionally its new parent by stable OID. Pass expected_version from get_element_details to detect concurrent changes. " +
         "The element is appended at the end of the new parent's children.")]
     public static string MoveElement(
-        [Description("Full name of the element to move, e.g. 'House/GF/Office/Socket'")] string fullname,
-        [Description("Full name of the new parent element, e.g. 'House/FF/Bedroom'. Empty = move to top-level.")] string new_parent = "")
+        [Description("Full name of the element to move. Optional when oid is provided.")] string fullname = "",
+        [Description("Full name of the new parent element. Empty = move to top-level unless new_parent_oid is provided.")] string new_parent = "",
+        [Description("Stable OID of the element to move. Optional when fullname is provided.")] string? oid = null,
+        [Description("Stable OID of the new parent. Optional; when combined with new_parent both must identify the same element.")] string? new_parent_oid = null,
+        [Description("Version returned by get_element_details for the element being moved. The move fails if it changed meanwhile.")] int? expected_version = null)
     {
         fullname   = fullname?.Trim()   ?? "";
         new_parent = new_parent?.Trim().TrimEnd('/') ?? "";
-
-        if (string.IsNullOrEmpty(fullname))
-            return "Error: 'fullname' is required.";
+        var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
+        if (versionError != null) return versionError;
 
         try
         {
             using var conn = FirebirdDb.OpenConnection();
-            var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
+            var (_, byOid, byFullName) = QueryHelpers.LoadEtree(conn);
+            var resolution = QueryHelpers.ResolveElementSelector(byOid, byFullName, fullname, oid);
+            if (resolution.error != null) return resolution.error;
+            var targetRow = resolution.row!;
+            fullname = resolution.canonicalFullName;
 
-            if (!QueryHelpers.TryResolveElementRow(byFullName, fullname, out var targetRow, out var canonicalFullname))
-                return $"Error: element '{fullname}' not found.";
-            fullname = canonicalFullname;
-
-            var oid = targetRow.Str("Oid");
+            var targetOid = targetRow.Str("Oid");
 
             string? newParentOid      = null;
             string? newParentFullName = null;
-            if (!string.IsNullOrEmpty(new_parent))
+            if (!string.IsNullOrEmpty(new_parent) || !string.IsNullOrWhiteSpace(new_parent_oid))
             {
-                if (!QueryHelpers.TryResolveElementRow(byFullName, new_parent, out var parentRow, out var canonicalNewParent))
-                    return $"Error: new parent element '{new_parent}' not found.";
-                new_parent = canonicalNewParent;
+                var parentResolution = QueryHelpers.ResolveElementSelector(
+                    byOid, byFullName, new_parent, new_parent_oid);
+                if (parentResolution.error != null)
+                    return parentResolution.error;
+                var parentRow = parentResolution.row!;
+                new_parent = parentResolution.canonicalFullName;
 
                 newParentOid      = parentRow.Str("Oid");
-                newParentFullName = canonicalNewParent;
+                newParentFullName = parentResolution.canonicalFullName;
 
                 var elementPrefix = fullname.TrimEnd('/') + "/";
                 if (new_parent.StartsWith(elementPrefix, StringComparison.OrdinalIgnoreCase) ||
@@ -672,20 +695,26 @@ public static class ElementTools
                 return $"Error: an element with full name '{newFullName}' already exists.";
 
             var elemRows = FirebirdDb.ExecuteQuery(conn,
-                """SELECT "Name", "ShortName", "PartOfElement" FROM "Element" WHERE "Oid" = ?""", oid);
+                """SELECT "Name", "ShortName", "PartOfElement" FROM "Element" WHERE "Oid" = ?""", targetOid);
             if (elemRows.Count == 0) return "Error: element data not found.";
             var elemName      = elemRows[0].Str("Name");
             var elemShortName = elemRows[0].Str("ShortName").NullIfEmpty();
             var currentParentOid = elemRows[0].Str("PartOfElement").NullIfEmpty();
 
             if (string.Equals(FirebirdDb.OidKey(currentParentOid), FirebirdDb.OidKey(newParentOid), StringComparison.OrdinalIgnoreCase))
+            {
+                if (expected_version.HasValue
+                    && !QueryHelpers.HasExpectedVersion(conn, targetOid, expected_version.Value))
+                    return QueryHelpers.VersionConflict(
+                        "element", expected_version.Value, "get_element_details");
                 return $"✓ Element '{fullname}' already has the requested parent.";
+            }
 
-            var siblingError = QueryHelpers.CheckSiblingUniqueness(conn, elemName, elemShortName, newParentOid, oid);
+            var siblingError = QueryHelpers.CheckSiblingUniqueness(conn, elemName, elemShortName, newParentOid, targetOid);
             if (siblingError != null) return siblingError;
 
             var statusRows = FirebirdDb.ExecuteQuery(conn,
-                """SELECT "Status" FROM "CEntity" WHERE "Oid" = ?""", oid);
+                """SELECT "Status" FROM "CEntity" WHERE "Oid" = ?""", targetOid);
             var elementStatusOid = statusRows[0].Str("Status").NullIfEmpty();
             var parentStatusAdvisory = QueryHelpers.ElementParentStatusAdvisory(
                 conn, elementStatusOid, newParentOid);
@@ -695,13 +724,12 @@ public static class ElementTools
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
-                FirebirdDb.ExecuteNonQuery(conn, txn, """
-                    UPDATE "CEntity" SET
-                        "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1,
-                        "UpdatedOn" = ?,
-                        "UpdatedBy" = ?
-                    WHERE "Oid" = ?
-                    """, now, "HomeMemory", oid);
+                if (!QueryHelpers.TouchCEntity(
+                        conn, txn, targetOid, now, "HomeMemory", expected_version))
+                    return expected_version.HasValue
+                        ? QueryHelpers.VersionConflict(
+                            "element", expected_version.Value, "get_element_details")
+                        : "Error: element no longer exists. Call get_element_details again.";
 
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     UPDATE "Element" SET "PartOfElement" = ?, "SortIndex" = ?
@@ -709,7 +737,7 @@ public static class ElementTools
                     """,
                     (object?)newParentOid ?? DBNull.Value,
                     sortIndex,
-                    oid);
+                    targetOid);
 
                 var result = $"✓ Element moved: '{fullname}' → '{newFullName}'.";
                 if (parentStatusAdvisory != null)

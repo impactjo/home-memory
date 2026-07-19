@@ -108,6 +108,168 @@ internal static class QueryHelpers
         return true;
     }
 
+    internal static (Row? row, string canonicalFullName, string? error) ResolveElementSelector(
+        Dictionary<string, Row> byOid,
+        Dictionary<string, Row> byFullName,
+        string? fullname,
+        string? oid)
+    {
+        fullname = string.IsNullOrWhiteSpace(fullname) ? null : NormalizePath(fullname);
+        oid = string.IsNullOrWhiteSpace(oid) ? null : oid.Trim();
+        if (fullname == null && oid == null)
+            return (null, "", "Error: provide 'fullname' or 'oid'.");
+
+        Row? pathRow = null;
+        if (fullname != null && !TryResolveElementRow(byFullName, fullname, out pathRow, out _))
+            return (null, "", $"Error: element '{fullname}' not found.");
+
+        Row? oidRow = null;
+        if (oid != null)
+        {
+            if (!Guid.TryParse(oid, out var parsedOid))
+                return (null, "", "Error: 'oid' must be a valid GUID.");
+            if (!byOid.TryGetValue(FirebirdDb.OidKey(parsedOid), out oidRow))
+                return (null, "", $"Error: element OID '{parsedOid:D}' not found.");
+        }
+
+        if (pathRow != null && oidRow != null
+            && !FirebirdDb.OidKey(pathRow["Oid"]).Equals(
+                FirebirdDb.OidKey(oidRow["Oid"]), StringComparison.OrdinalIgnoreCase))
+            return (null, "", "Error: 'fullname' and 'oid' identify different elements.");
+
+        var row = oidRow ?? pathRow!;
+        return (row, row.Str("FULLNAME"), null);
+    }
+
+    internal static (Row? row, string? error) ResolveConnectionSelector(
+        FbConnection conn,
+        Dictionary<string, Row> elementsByFullName,
+        string? name,
+        string? source,
+        string? destination,
+        string? oid)
+    {
+        name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        source = string.IsNullOrWhiteSpace(source) ? null : NormalizePath(source);
+        destination = string.IsNullOrWhiteSpace(destination) ? null : NormalizePath(destination);
+        oid = string.IsNullOrWhiteSpace(oid) ? null : oid.Trim();
+
+        if (name == null && oid == null)
+            return (null, "Error: provide 'name' or 'oid'.");
+
+        string? sourceOid = null;
+        if (source != null)
+        {
+            if (!TryResolveElementRow(elementsByFullName, source, out var sourceRow, out _))
+                return (null, $"Error: source element '{source}' not found.");
+            sourceOid = sourceRow.Str("Oid");
+        }
+
+        string? destinationOid = null;
+        if (destination != null)
+        {
+            if (!TryResolveElementRow(elementsByFullName, destination, out var destinationRow, out _))
+                return (null, $"Error: destination element '{destination}' not found.");
+            destinationOid = destinationRow.Str("Oid");
+        }
+
+        if (oid != null)
+        {
+            if (!Guid.TryParse(oid, out var parsedOid))
+                return (null, "Error: 'oid' must be a valid GUID.");
+
+            var oidMatches = FirebirdDb.ExecuteQuery(conn, """
+                SELECT "Oid", "Name", "Source", "Destination"
+                FROM "Connection"
+                WHERE "Oid" = ?
+                """, parsedOid.ToString("D"));
+            if (oidMatches.Count == 0)
+                return (null, $"Error: connection OID '{parsedOid:D}' not found.");
+
+            var oidRow = oidMatches[0];
+            if (name != null && !oidRow.Str("Name").Equals(name, StringComparison.OrdinalIgnoreCase))
+                return (null, "Error: 'name' and 'oid' identify different connections.");
+            if (sourceOid != null && !FirebirdDb.OidKey(oidRow["Source"]).Equals(
+                    FirebirdDb.OidKey(sourceOid), StringComparison.OrdinalIgnoreCase))
+                return (null, "Error: 'source' does not match the connection identified by 'oid'.");
+            if (destinationOid != null && !FirebirdDb.OidKey(oidRow["Destination"]).Equals(
+                    FirebirdDb.OidKey(destinationOid), StringComparison.OrdinalIgnoreCase))
+                return (null, "Error: 'destination' does not match the connection identified by 'oid'.");
+
+            return (oidRow, null);
+        }
+
+        var sql = """SELECT "Oid", "Name", "Source", "Destination" FROM "Connection" WHERE UPPER("Name") = UPPER(?)""";
+        var args = new List<object?> { name };
+        if (sourceOid != null)
+        {
+            sql += """ AND "Source" = ?""";
+            args.Add(sourceOid);
+        }
+        if (destinationOid != null)
+        {
+            sql += """ AND "Destination" = ?""";
+            args.Add(destinationOid);
+        }
+
+        var matches = FirebirdDb.ExecuteQuery(conn, sql, args.ToArray());
+        if (matches.Count == 0)
+            return (null, $"Error: connection '{name}' not found. " +
+                "Tip: provide source, destination, or oid to narrow the search.");
+        if (matches.Count > 1)
+            return (null, $"Error: {matches.Count} connections named '{name}' found. " +
+                "Provide source, destination, or oid to narrow the search.");
+
+        return (matches[0], null);
+    }
+
+    internal static string? ValidateExpectedVersion(int? expectedVersion)
+        => expectedVersion < 0 ? "Error: 'expected_version' must be zero or greater." : null;
+
+    internal static bool TouchCEntity(
+        FbConnection conn,
+        FbTransaction txn,
+        string oid,
+        DateTime updatedOn,
+        string updatedBy,
+        int? expectedVersion)
+    {
+        if (expectedVersion.HasValue)
+        {
+            return FirebirdDb.ExecuteNonQuery(conn, txn, """
+                UPDATE "CEntity" SET
+                    "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1,
+                    "UpdatedOn" = ?,
+                    "UpdatedBy" = ?
+                WHERE "Oid" = ?
+                  AND COALESCE("OptimisticLockField", 0) = ?
+                """, updatedOn, updatedBy, oid, expectedVersion.Value) == 1;
+        }
+
+        return FirebirdDb.ExecuteNonQuery(conn, txn, """
+            UPDATE "CEntity" SET
+                "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1,
+                "UpdatedOn" = ?,
+                "UpdatedBy" = ?
+            WHERE "Oid" = ?
+            """, updatedOn, updatedBy, oid) == 1;
+    }
+
+    internal static string VersionConflict(string entityKind, int expectedVersion, string detailsTool)
+        => $"Error: {entityKind} was modified since it was read (expected version {expectedVersion}). " +
+           $"Call {detailsTool} again before retrying.";
+
+    internal static bool HasExpectedVersion(
+        FbConnection conn, string oid, int expectedVersion)
+    {
+        var rows = FirebirdDb.ExecuteQuery(conn, """
+            SELECT COUNT(*) AS CNT
+            FROM "CEntity"
+            WHERE "Oid" = ? AND COALESCE("OptimisticLockField", 0) = ?
+            """, oid, expectedVersion);
+        return FirebirdDb.CountResult(rows) == 1;
+    }
+
     /// <summary>
     /// Resolves an element path to its canonical short-name FULLNAME,
     /// accepting both short-name paths (e.g. 'House/GF') and long-name paths (e.g. 'House/Ground Floor').

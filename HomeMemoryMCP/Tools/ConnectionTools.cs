@@ -262,18 +262,16 @@ public static class ConnectionTools
     [Description(
         "Full details of a single connection: category, status, source, destination, route, length, " +
         "purpose, note, description, and user manual. " +
-        "Identify by name, optionally narrowed by source or destination when multiple connections share the same name. " +
+        "Identify by name or stable OID. Source and destination can narrow or verify the selection. " +
         "update_connection requires calling this first before modifying description, note, purpose, or user_manual. " +
-        "Returns creation metadata and, when available, last-update metadata; records imported from external tools may lack this data.")]
+        "Returns the stable OID, version, creation metadata and, when available, last-update metadata; records imported from external tools may lack audit data.")]
     public static string GetConnectionDetails(
-        [Description("Connection name to look up")] string name,
+        [Description("Connection name to look up. Optional when oid is provided.")] string name = "",
         [Description("Full path of the source element – narrows search if name is ambiguous (optional)")] string? source = null,
-        [Description("Full path of the destination element – narrows search if name is ambiguous (optional)")] string? destination = null)
+        [Description("Full path of the destination element – narrows search if name is ambiguous (optional)")] string? destination = null,
+        [Description("Stable connection OID returned by create_connection or this tool. Optional when name is provided.")] string? oid = null)
     {
         name = name?.Trim() ?? "";
-        if (string.IsNullOrEmpty(name))
-            return "Error: 'name' is required.";
-
         source = string.IsNullOrWhiteSpace(source) ? null : QueryHelpers.NormalizePath(source);
         destination = string.IsNullOrWhiteSpace(destination) ? null : QueryHelpers.NormalizePath(destination);
 
@@ -287,39 +285,18 @@ public static class ConnectionTools
                 r => r.Str("FULLNAME"),
                 StringComparer.OrdinalIgnoreCase);
 
-            string? srcOid = null, dstOid = null;
-            if (source != null)
-            {
-                if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out _))
-                    return $"Error: source element '{source}' not found.";
-                srcOid = srcRow.Str("Oid");
-            }
-            if (destination != null)
-            {
-                if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out _))
-                    return $"Error: destination element '{destination}' not found.";
-                dstOid = dstRow.Str("Oid");
-            }
-
-            var findSql  = """SELECT c."Oid" FROM "Connection" c WHERE UPPER(c."Name") = UPPER(?)""";
-            var findArgs = new List<object?> { name };
-            if (srcOid != null) { findSql += """ AND c."Source" = ?""";      findArgs.Add(srcOid); }
-            if (dstOid != null) { findSql += """ AND c."Destination" = ?"""; findArgs.Add(dstOid); }
-
-            var matches = FirebirdDb.ExecuteQuery(conn, findSql, findArgs.ToArray());
-            if (matches.Count == 0)
-                return $"Error: connection '{name}' not found. " +
-                       "Tip: provide source and/or destination to narrow the search.";
-            if (matches.Count > 1)
-                return $"Error: {matches.Count} connections named '{name}' found. " +
-                       "Provide source and/or destination to narrow the search.";
-
-            var oid = matches[0].Str("Oid");
+            var resolution = QueryHelpers.ResolveConnectionSelector(
+                conn, byFullName, name, source, destination, oid);
+            if (resolution.error != null) return resolution.error;
+            var selected = resolution.row!;
+            var targetOid = selected.Str("Oid");
+            name = selected.Str("Name");
 
             var detail = FirebirdDb.ExecuteQuery(conn, """
-                SELECT c."Name", c."Source", c."Destination", c."Route", c."Length",
+                SELECT c."Oid", c."Name", c."Source", c."Destination", c."Route", c."Length",
                        ce."Purpose", ce."Note", ce."Description", ce."UserManual",
                        ce."CreatedOn", ce."CreatedBy", ce."UpdatedOn", ce."UpdatedBy",
+                       ce."OptimisticLockField",
                        cat."Name" AS CategoryName,
                        s."Name"   AS StatusName,
                        pt."Name"  AS PartTypeName
@@ -331,7 +308,7 @@ public static class ConnectionTools
                 LEFT JOIN "Part"     p  ON p."Oid"   = c."Oid"
                 LEFT JOIN "PartType" pt ON pt."Oid"  = p."PartType"
                 WHERE c."Oid" = ?
-                """, oid);
+                """, targetOid);
 
             if (detail.Count == 0)
                 return $"Error: could not load details for connection '{name}'.";
@@ -342,6 +319,8 @@ public static class ConnectionTools
             var length = d.GetValueOrDefault("Length");
 
             var lines = new List<string> { $"Connection: {d.Str("Name")}\n" };
+            lines.Add($"  OID         : {d.Str("Oid")}");
+            lines.Add($"  Version     : {d.Int("OptimisticLockField")}");
             lines.Add($"  Category    : {d.Str("CategoryName")}");
             var status = d.Str("StatusName");
             if (!string.IsNullOrEmpty(status))      lines.Add($"  Status      : {status}");
@@ -515,14 +494,14 @@ public static class ConnectionTools
     [McpServerTool(Name = "update_connection", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description(
         "Updates an existing connection. Only provided fields are changed. " +
-        "Identify the connection by its current name, optionally narrowed by source/destination " +
-        "(required when multiple connections share the same name). " +
+        "Identify the connection by its current name or stable OID. Source and destination can narrow or verify the selection. " +
+        "Pass expected_version from get_connection_details to prevent overwriting concurrent changes. " +
         "Pass 'CLEAR' to empty route, length, status, purpose, note, description, or user_manual. " +
         "IMPORTANT: ALWAYS call get_connection_details before updating description, note, purpose, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars).")]
     public static string UpdateConnection(
-        [Description("Current name of the connection to update")] string name,
+        [Description("Current name of the connection to update. Optional when oid is provided.")] string name = "",
         [Description("Full path of the current source element – narrows search if name is ambiguous (optional)")] string? source = null,
         [Description("Full path of the current destination element – narrows search if name is ambiguous (optional)")] string? destination = null,
         [Description("New name (optional). Forbidden characters: *|<>?\" and tab.")] string? new_name = null,
@@ -535,11 +514,13 @@ public static class ConnectionTools
         [Description("Intended use, when not self-evident from the name ('CLEAR' to remove)")] string? purpose = null,
         [Description("Short temporary to-do during planning/construction. For permanent technical info use description instead ('CLEAR' to remove)")] string? note = null,
         [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details ('CLEAR' to remove)")] string? description = null,
-        [Description("User-facing information: operating instructions, maintenance schedule, troubleshooting tips ('CLEAR' to remove)")] string? user_manual = null)
+        [Description("User-facing information: operating instructions, maintenance schedule, troubleshooting tips ('CLEAR' to remove)")] string? user_manual = null,
+        [Description("Stable connection OID. Optional when name is provided. When both are supplied, they must identify the same connection.")] string? oid = null,
+        [Description("Version returned by get_connection_details. When supplied, the update fails if the connection changed meanwhile.")] int? expected_version = null)
     {
         name = name?.Trim() ?? "";
-        if (string.IsNullOrEmpty(name))
-            return "Error: 'name' is required to identify the connection.";
+        var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
+        if (versionError != null) return versionError;
 
         source = string.IsNullOrWhiteSpace(source) ? null : QueryHelpers.NormalizePath(source);
         destination = string.IsNullOrWhiteSpace(destination) ? null : QueryHelpers.NormalizePath(destination);
@@ -586,39 +567,13 @@ public static class ConnectionTools
         try
         {
             using var conn = FirebirdDb.OpenConnection();
-
-            string? srcOid = null, dstOid = null;
-            if (source != null || destination != null)
-            {
-                var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
-                if (source != null)
-                {
-                    if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out _))
-                        return $"Error: source element '{source}' not found.";
-                    srcOid = srcRow.Str("Oid");
-                }
-                if (destination != null)
-                {
-                    if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out _))
-                        return $"Error: destination element '{destination}' not found.";
-                    dstOid = dstRow.Str("Oid");
-                }
-            }
-
-            var findSql  = """SELECT "Oid" FROM "Connection" WHERE UPPER("Name") = UPPER(?)""";
-            var findArgs = new List<object?> { name };
-            if (srcOid != null) { findSql += """ AND "Source" = ?""";      findArgs.Add(srcOid); }
-            if (dstOid != null) { findSql += """ AND "Destination" = ?"""; findArgs.Add(dstOid); }
-
-            var matches = FirebirdDb.ExecuteQuery(conn, findSql, findArgs.ToArray());
-            if (matches.Count == 0)
-                return $"Error: connection '{name}' not found. " +
-                       "Tip: provide source and/or destination to narrow the search.";
-            if (matches.Count > 1)
-                return $"Error: {matches.Count} connections named '{name}' found. " +
-                       "Provide source and/or destination to narrow the search.";
-
-            var oid = matches[0].Str("Oid");
+            var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
+            var resolution = QueryHelpers.ResolveConnectionSelector(
+                conn, byFullName, name, source, destination, oid);
+            if (resolution.error != null) return resolution.error;
+            var selected = resolution.row!;
+            var targetOid = selected.Str("Oid");
+            name = selected.Str("Name");
             var now = DateTime.UtcNow;
 
             var curConnRows = FirebirdDb.ExecuteQuery(conn, """
@@ -626,7 +581,7 @@ public static class ConnectionTools
                 FROM "Connection" c
                 JOIN "CItem" ci ON ci."Oid" = c."Oid"
                 WHERE c."Oid" = ?
-                """, oid);
+                """, targetOid);
             if (curConnRows.Count == 0)
                 return "Error: connection data not found.";
             var curConn = curConnRows[0];
@@ -648,16 +603,15 @@ public static class ConnectionTools
             string? newSrcOid = null, newDstOid = null;
             if (new_source != null || new_destination != null)
             {
-                var (_, _, byFullName2) = QueryHelpers.LoadEtree(conn);
                 if (new_source != null)
                 {
-                    if (!QueryHelpers.TryResolveElementRow(byFullName2, new_source, out var row, out _))
+                    if (!QueryHelpers.TryResolveElementRow(byFullName, new_source, out var row, out _))
                         return $"Error: new source element '{new_source}' not found.";
                     newSrcOid = row.Str("Oid");
                 }
                 if (new_destination != null)
                 {
-                    if (!QueryHelpers.TryResolveElementRow(byFullName2, new_destination, out var row, out _))
+                    if (!QueryHelpers.TryResolveElementRow(byFullName, new_destination, out var row, out _))
                         return $"Error: new destination element '{new_destination}' not found.";
                     newDstOid = row.Str("Oid");
                 }
@@ -670,7 +624,7 @@ public static class ConnectionTools
                 var checkCat  = categoryOid ?? curConn.Str("Category");
                 var checkSrc  = newSrcOid   ?? curConn.Str("Source");
                 var checkDst  = newDstOid   ?? curConn.Str("Destination");
-                var combError = QueryHelpers.CheckConnectionCombinationUniqueness(conn, checkName, checkCat, checkSrc, checkDst, oid);
+                var combError = QueryHelpers.CheckConnectionCombinationUniqueness(conn, checkName, checkCat, checkSrc, checkDst, targetOid);
                 if (combError != null) return combError;
             }
 
@@ -707,64 +661,63 @@ public static class ConnectionTools
             }
 
             var overwriteAdvisories = QueryHelpers.CollectOverwriteAdvisories(
-                conn, oid, description, note, purpose, user_manual);
+                conn, targetOid, description, note, purpose, user_manual);
             var effectiveName = new_name ?? curConn.Str("Name");
             var effectiveCategoryOid = categoryOid ?? curConn.Str("Category");
             var effectiveSrcOid = newSrcOid ?? curConn.Str("Source");
             var effectiveDstOid = newDstOid ?? curConn.Str("Destination");
-            var nameAdvisory = QueryHelpers.ConnectionSameNameAdvisory(conn, effectiveName, oid);
+            var nameAdvisory = QueryHelpers.ConnectionSameNameAdvisory(conn, effectiveName, targetOid);
             var combinationHint = QueryHelpers.ConnectionSameSrcDstCategoryHint(
-                conn, effectiveSrcOid, effectiveDstOid, effectiveCategoryOid, oid);
+                conn, effectiveSrcOid, effectiveDstOid, effectiveCategoryOid, targetOid);
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
-                FirebirdDb.ExecuteNonQuery(conn, txn, """
-                    UPDATE "CEntity" SET
-                        "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1,
-                        "UpdatedOn" = ?,
-                        "UpdatedBy" = ?
-                    WHERE "Oid" = ?
-                    """, now, "HomeMemory", oid);
+                if (!QueryHelpers.TouchCEntity(
+                        conn, txn, targetOid, now, "HomeMemory", expected_version))
+                    return expected_version.HasValue
+                        ? QueryHelpers.VersionConflict(
+                            "connection", expected_version.Value, "get_connection_details")
+                        : "Error: connection no longer exists. Call get_connection_details again.";
 
                 if (updateCategory)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "CItem" SET "Category" = ? WHERE "Oid" = ?""",
-                        (object?)categoryOid ?? DBNull.Value, oid);
+                        (object?)categoryOid ?? DBNull.Value, targetOid);
 
                 if (new_name != null)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "Connection" SET "Name" = ? WHERE "Oid" = ?""",
-                        new_name, oid);
+                        new_name, targetOid);
 
                 if (newSrcOid != null)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "Connection" SET "Source" = ? WHERE "Oid" = ?""",
-                        newSrcOid, oid);
+                        newSrcOid, targetOid);
 
                 if (newDstOid != null)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "Connection" SET "Destination" = ? WHERE "Oid" = ?""",
-                        newDstOid, oid);
+                        newDstOid, targetOid);
 
                 if (route != null)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "Connection" SET "Route" = ? WHERE "Oid" = ?""",
-                        route == "CLEAR" ? DBNull.Value : (object)route.Trim(), oid);
+                        route == "CLEAR" ? DBNull.Value : (object)route.Trim(), targetOid);
 
                 if (updateLength)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "Connection" SET "Length" = ? WHERE "Oid" = ?""",
-                        newLength.HasValue ? (object)newLength.Value : DBNull.Value, oid);
+                        newLength.HasValue ? (object)newLength.Value : DBNull.Value, targetOid);
 
-                QueryHelpers.SetCEntityField(conn, txn, oid, "Purpose",     purpose);
-                QueryHelpers.SetCEntityField(conn, txn, oid, "Note",        note);
-                QueryHelpers.SetCEntityField(conn, txn, oid, "Description", description);
-                QueryHelpers.SetCEntityField(conn, txn, oid, "UserManual",  user_manual);
+                QueryHelpers.SetCEntityField(conn, txn, targetOid, "Purpose",     purpose);
+                QueryHelpers.SetCEntityField(conn, txn, targetOid, "Note",        note);
+                QueryHelpers.SetCEntityField(conn, txn, targetOid, "Description", description);
+                QueryHelpers.SetCEntityField(conn, txn, targetOid, "UserManual",  user_manual);
 
                 if (updateStatus)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
                         """UPDATE "CEntity" SET "Status" = ? WHERE "Oid" = ?""",
-                        status == "CLEAR" ? DBNull.Value : (object)statusOid!, oid);
+                        status == "CLEAR" ? DBNull.Value : (object)statusOid!, targetOid);
 
                 var displayName = new_name ?? curConn.Str("Name");
                 var result = $"✓ Connection '{displayName}' updated.";
@@ -784,18 +737,20 @@ public static class ConnectionTools
 
     [McpServerTool(Name = "delete_connection", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
-        "Deletes a connection. Search is by name, optionally narrowed by source or destination " +
-        "(use when multiple connections share the same name). " +
+        "Deletes a connection identified by name or stable OID. Source and destination can narrow or verify the selection. " +
+        "Pass expected_version from get_connection_details to prevent deleting a concurrently changed connection. " +
         "Blocked if documents are attached. Treat this as a stop signal: report the attached documents " +
         "and ask for explicit confirmation before detaching them. Never detach them on your own.")]
     public static string DeleteConnection(
-        [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting'")] string name,
+        [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting'. Optional when oid is provided.")] string name = "",
         [Description("Full path of the source element to narrow the search (optional)")] string? source = null,
-        [Description("Full path of the destination element to narrow the search (optional)")] string? destination = null)
+        [Description("Full path of the destination element to narrow the search (optional)")] string? destination = null,
+        [Description("Stable connection OID. Optional when name is provided. When both are supplied, they must identify the same connection.")] string? oid = null,
+        [Description("Version returned by get_connection_details. When supplied, deletion fails if the connection changed meanwhile.")] int? expected_version = null)
     {
         name = name?.Trim() ?? "";
-        if (string.IsNullOrEmpty(name))
-            return "Error: 'name' is required.";
+        var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
+        if (versionError != null) return versionError;
 
         source = string.IsNullOrWhiteSpace(source) ? null : QueryHelpers.NormalizePath(source);
         destination = string.IsNullOrWhiteSpace(destination) ? null : QueryHelpers.NormalizePath(destination);
@@ -803,55 +758,35 @@ public static class ConnectionTools
         try
         {
             using var conn = FirebirdDb.OpenConnection();
+            var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
+            var resolution = QueryHelpers.ResolveConnectionSelector(
+                conn, byFullName, name, source, destination, oid);
+            if (resolution.error != null) return resolution.error;
+            var selected = resolution.row!;
+            var targetOid = selected.Str("Oid");
+            name = selected.Str("Name");
 
-            string? srcOid = null, dstOid = null;
-            if (source != null || destination != null)
-            {
-                var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
-                if (source != null)
-                {
-                    if (!QueryHelpers.TryResolveElementRow(byFullName, source, out var srcRow, out _))
-                        return $"Error: source element '{source}' not found.";
-                    srcOid = srcRow.Str("Oid");
-                }
-                if (destination != null)
-                {
-                    if (!QueryHelpers.TryResolveElementRow(byFullName, destination, out var dstRow, out _))
-                        return $"Error: destination element '{destination}' not found.";
-                    dstOid = dstRow.Str("Oid");
-                }
-            }
-
-            var sql  = """SELECT "Oid" FROM "Connection" WHERE UPPER("Name") = UPPER(?)""";
-            var args = new List<object?> { name };
-            if (srcOid != null) { sql += """ AND "Source" = ?""";      args.Add(srcOid); }
-            if (dstOid != null) { sql += """ AND "Destination" = ?"""; args.Add(dstOid); }
-
-            var matches = FirebirdDb.ExecuteQuery(conn, sql, args.ToArray());
-            if (matches.Count == 0)
-                return $"Error: connection '{name}' not found. " +
-                       "Tip: provide source and/or destination to narrow the search.";
-            if (matches.Count > 1)
-                return $"Error: {matches.Count} connections named '{name}' found. " +
-                       "Provide source and/or destination to narrow the search.";
-
-            var oid = matches[0].Str("Oid");
-
-            var docError = QueryHelpers.CheckDocumentsAttached(conn, oid, "connection");
+            var docError = QueryHelpers.CheckDocumentsAttached(conn, targetOid, "connection");
             if (docError != null) return docError;
 
-            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, oid, "connection");
+            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, targetOid, "connection");
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Connection"     WHERE "Oid"   = ?""", oid);
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Part"           WHERE "Oid"   = ?""", oid);
+                if (expected_version.HasValue
+                    && !QueryHelpers.TouchCEntity(
+                        conn, txn, targetOid, DateTime.UtcNow, "HomeMemory", expected_version))
+                    return QueryHelpers.VersionConflict(
+                        "connection", expected_version.Value, "get_connection_details");
+
+                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Connection"     WHERE "Oid"   = ?""", targetOid);
+                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Part"           WHERE "Oid"   = ?""", targetOid);
                 // Remove image associations before CItem (FK has no CASCADE).
                 // Table may not exist in all DB versions – skip silently (mirrors CollectDeleteAdvisories read-path).
-                try { FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "ImagesToCItems" WHERE "CItem" = ?""", oid); }
+                try { FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "ImagesToCItems" WHERE "CItem" = ?""", targetOid); }
                 catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569) { /* table absent – skip */ }
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", oid);
-                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", oid);
+                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", targetOid);
+                FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", targetOid);
                 var result = $"✓ Connection '{name}' deleted.";
                 if (advisories.Count > 0)
                     result += $"\n  Advisory: {string.Join("; ", advisories)}.";
