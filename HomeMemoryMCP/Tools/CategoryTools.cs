@@ -269,31 +269,29 @@ public static class CategoryTools
         "Full details of a single object category: path, parent, primary area flag, " +
         "direct and subtree item counts (elements, connections, part types, other; subtree spans subcategories at any depth), " +
         "purpose, note, description, and user manual. " +
-        "Identify by full path (e.g. 'Electrical/Cable') or by name/short name when unambiguous. " +
+        "Identify by full path (e.g. 'Electrical/Cable'), unambiguous name/short name, or stable OID. " +
         "update_category requires calling this first before modifying purpose, note, description, or user_manual. " +
-        "Returns creation metadata and, when available, last-update metadata; records imported from external tools may lack this data.")]
+        "Returns OID, version, creation metadata and, when available, last-update metadata; records imported from external tools may lack audit data.")]
     public static string GetCategoryDetails(
-        [Description("Full category path (e.g. 'Electrical/Cable'), name, or short name. Use full path to disambiguate.")] string category)
+        [Description("Full category path (e.g. 'Electrical/Cable'), name, or short name. Optional when oid is provided.")] string category = "",
+        [Description("Stable category OID returned by create_category or this tool. Optional when category is provided.")] string? oid = null)
     {
         category = category?.Trim() ?? "";
-        if (string.IsNullOrEmpty(category))
-            return "Error: 'category' is required.";
 
         try
         {
             using var conn = FirebirdDb.OpenConnection();
 
-            var (catOid, catError) = QueryHelpers.ResolveCategoryOid(conn, category);
-            if (catError != null) return catError;
-            if (catOid == null)
-                return $"Error: category '{category}' not found. Call list_categories to see available categories.";
+            var selection = QueryHelpers.ResolveCategorySelector(conn, category, oid);
+            if (selection.Error != null) return selection.Error;
+            var catOid = selection.Oid!;
 
             var rows = FirebirdDb.ExecuteQuery(conn, $"""
                 {SqlQueries.CatCte}
-                SELECT ct.CAT_FULLNAME, c."Name", c."ShortName",
+                SELECT c."Oid", ct.CAT_FULLNAME, c."Name", c."ShortName",
                        c."IsAreaCategory", c."ParentCategory",
                        ce."Purpose", ce."Note", ce."Description", ce."UserManual",
-                       ce."CreatedOn", ce."CreatedBy", ce."UpdatedOn", ce."UpdatedBy"
+                       ce."OptimisticLockField", ce."CreatedOn", ce."CreatedBy", ce."UpdatedOn", ce."UpdatedBy"
                 FROM "Category" c
                 JOIN CAT_TREE ct ON ct."Oid" = c."Oid"
                 LEFT JOIN "CEntity" ce ON ce."Oid" = c."Oid"
@@ -377,6 +375,8 @@ public static class CategoryTools
             var subOther = subCi - subElem - subConn - subPt;
 
             var lines = new List<string> { $"Category: {fullPath}\n" };
+            lines.Add($"  OID              : {r.Str("Oid")}");
+            lines.Add($"  Version          : {r.Int("OptimisticLockField")}");
             lines.Add($"  Name             : {name}");
             if (!string.IsNullOrEmpty(sn) && sn != name)
                 lines.Add($"  Short name       : {sn}");
@@ -422,12 +422,12 @@ public static class CategoryTools
     [McpServerTool(Name = "update_category", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description(
         "Updates an existing object category: rename, change short name, description, primary area flag, or move to a different parent. " +
-        "Required: category (current full path, e.g. 'Electrical/Lighting'). " +
+        "Identify the category by current path/name or stable OID. " +
         "Optional: new_name, new_short_name (CLEAR to remove), purpose (CLEAR to remove), note (CLEAR to remove), " +
         "description (CLEAR to remove), user_manual (CLEAR to remove), " +
-        "is_primary_area ('true' or 'false'), " +
-        "new_parent (full category path, e.g. 'Electrical'; CLEAR to move to top-level). " +
+        "is_primary_area ('true' or 'false'), new_parent or new_parent_oid; use CLEAR for new_parent to move to top-level. " +
         "At least one optional field must be provided. " +
+        "Pass expected_version from get_category_details to prevent overwriting concurrent changes. " +
         "IMPORTANT: ALWAYS call get_category_details before updating purpose, note, description, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user/documentation guide -> user_manual (multiline, 4000 chars). " +
@@ -435,7 +435,7 @@ public static class CategoryTools
         "Note: renaming/moving a category automatically updates the full path of all subcategories " +
         "(FullName is computed dynamically – no stored paths need to be migrated).")]
     public static string UpdateCategory(
-        [Description("Current full path of the category to update, e.g. 'Electrical/Lighting'.")] string category,
+        [Description("Current full path, name, or short name of the category. Optional when oid is provided.")] string category = "",
         [Description("New name (optional).")] string? new_name = null,
         [Description("New short name (optional). Use 'CLEAR' to remove.")] string? new_short_name = null,
         [Description("Intended use / explanation of what this category is for ('CLEAR' to remove). Only fill with information the user explicitly provided.")] string? purpose = null,
@@ -443,16 +443,19 @@ public static class CategoryTools
         [Description("Permanent technical info about this category itself, e.g. trade scope, conventions, references (optional, multiline, 4000 chars). Category-level only – not for individual items in this category. Use 'CLEAR' to remove.")] string? description = null,
         [Description("Documentation guide for this category, e.g. 'how to document items of this trade' ('CLEAR' to remove).")] string? user_manual = null,
         [Description("Set to true to mark as a primary area, false to unmark. Primary areas are the main location containers shown in the default structure overview (e.g. Building, Floor, Room, Garage, Outdoor Area); surface/detail zones like Wall Area or Ceiling Area are not primary areas.")] bool? is_primary_area = null,
-        [Description("New parent category full path (optional). Use 'CLEAR' to move to top-level.")] string? new_parent = null)
+        [Description("New parent category path or unambiguous name. Use CLEAR to move to top-level. Optional when new_parent_oid is provided.")] string? new_parent = null,
+        [Description("Stable OID of the category to update. Optional when category is provided. When both are supplied, they must identify the same category.")] string? oid = null,
+        [Description("Stable OID of the new parent category. Optional when new_parent is provided. When both are supplied, they must identify the same category.")] string? new_parent_oid = null,
+        [Description("Version returned by get_category_details. When supplied, the update fails if the category changed meanwhile.")] int? expected_version = null)
     {
         category = category?.Trim() ?? "";
-        if (string.IsNullOrEmpty(category))
-            return "Error: 'category' is required.";
+        var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
+        if (versionError != null) return versionError;
 
         if (new_name == null && new_short_name == null && purpose == null && note == null
             && description == null && user_manual == null
-            && is_primary_area == null && new_parent == null)
-            return "Error: provide at least one of new_name, new_short_name, purpose, note, description, user_manual, is_primary_area, new_parent.";
+            && is_primary_area == null && new_parent == null && new_parent_oid == null)
+            return "Error: provide at least one of new_name, new_short_name, purpose, note, description, user_manual, is_primary_area, new_parent, new_parent_oid.";
 
         // Validate new_name
         if (new_name != null)
@@ -481,6 +484,8 @@ public static class CategoryTools
         user_manual = Validate.NormalizeClear(user_manual);
         new_parent  = Validate.NormalizeClear(new_parent);
         bool clearParent = new_parent == "CLEAR";
+        if (clearParent && !string.IsNullOrWhiteSpace(new_parent_oid))
+            return "Error: 'new_parent' cannot be CLEAR when 'new_parent_oid' is provided.";
 
         purpose     = Validate.NormalizeSingleline(purpose);
         note        = Validate.NormalizeSingleline(note);
@@ -500,18 +505,16 @@ public static class CategoryTools
         {
             using var conn  = FirebirdDb.OpenConnection();
             var allCats     = LoadCatTree(conn);
-            var byFullName  = allCats.ToDictionary(
-                r => r.Str("CAT_FULLNAME"),
-                r => r,
-                StringComparer.OrdinalIgnoreCase);
 
-            // Find the category to update
-            category = QueryHelpers.NormalizePath(category);
-            if (!byFullName.TryGetValue(category, out var catRow))
-                return $"Error: category '{category}' not found. Call list_categories to see available categories.";
+            var selection = QueryHelpers.ResolveCategorySelector(conn, category, oid);
+            if (selection.Error != null) return selection.Error;
+            var selectedOid = selection.Oid!;
+            var catRow = allCats.Single(r => FirebirdDb.OidKey(r["Oid"]).Equals(
+                FirebirdDb.OidKey(selectedOid), StringComparison.OrdinalIgnoreCase));
 
-            var oid         = catRow.Str("Oid");
+            oid             = catRow.Str("Oid");
             var canonicalCategory = catRow.Str("CAT_FULLNAME");
+            category        = canonicalCategory;
             var currentName = catRow.Str("Name");
             var currentSN   = catRow.Str("ShortName");
 
@@ -540,11 +543,15 @@ public static class CategoryTools
             {
                 effectiveParentOid = null;
             }
-            else if (new_parent != null)
+            else if (new_parent != null || !string.IsNullOrWhiteSpace(new_parent_oid))
             {
-                new_parent = QueryHelpers.NormalizePath(new_parent);
-                if (!byFullName.TryGetValue(new_parent, out var newParentRow))
-                    return $"Error: new parent category '{new_parent}' not found. Call list_categories to see available categories.";
+                var parentSelection = QueryHelpers.ResolveCategorySelector(
+                    conn, new_parent, new_parent_oid, "new_parent", "new_parent_oid");
+                if (parentSelection.Error != null)
+                    return parentSelection.Error;
+                var newParentRow = allCats.Single(r => FirebirdDb.OidKey(r["Oid"]).Equals(
+                    FirebirdDb.OidKey(parentSelection.Oid), StringComparison.OrdinalIgnoreCase));
+                new_parent = parentSelection.CanonicalFullName;
 
                 // Circular reference check: new parent must not be self or a descendant of self
                 var newParentFullName = newParentRow.Str("CAT_FULLNAME");
@@ -606,13 +613,10 @@ public static class CategoryTools
             var newIsArea = is_primary_area;
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
-                FirebirdDb.ExecuteNonQuery(conn, txn, """
-                    UPDATE "CEntity" SET
-                        "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1,
-                        "UpdatedOn" = ?,
-                        "UpdatedBy" = ?
-                    WHERE "Oid" = ?
-                    """, now, "HomeMemory", oid);
+                if (!QueryHelpers.TouchCEntity(conn, txn, oid, now, "HomeMemory", expected_version))
+                    return expected_version.HasValue
+                        ? QueryHelpers.VersionConflict("category", expected_version.Value, "get_category_details")
+                        : "Error: category no longer exists.";
 
                 FirebirdDb.ExecuteNonQuery(conn, txn, """
                     UPDATE "Category"
@@ -650,7 +654,7 @@ public static class CategoryTools
                 if (description != null)    changes.Add(description == "CLEAR" ? "description → (removed)" : "description updated");
                 if (user_manual != null)    changes.Add(user_manual == "CLEAR" ? "user_manual → (removed)" : "user_manual updated");
                 if (newIsArea.HasValue)     changes.Add($"is_primary_area → {newIsArea.Value.ToString().ToLower()}");
-                if (clearParent || (new_parent != null && new_parent != "CLEAR"))
+                if (clearParent || new_parent != null || new_parent_oid != null)
                     changes.Add(effectiveParentOid == null ? "parent → (top-level)" : $"parent → '{new_parent}'");
 
                 var result = $"✓ Category '{canonicalCategory}' updated: {string.Join(", ", changes)}.";
@@ -808,7 +812,7 @@ public static class CategoryTools
     [McpServerTool(Name = "delete_category", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
         "Permanently deletes an empty, unused category. " +
-        "Required: category (full path, e.g. 'Electrical/Lighting'). " +
+        "Identify by full path, unambiguous name/short name, or stable OID. Pass expected_version from get_category_details to prevent deleting a concurrently changed category. " +
         "Blocked if: (1) documents are attached to the category, remove them first; " +
         "(2) the category has child categories, ask the user how to handle them first; " +
         "(3) any element, connection, or part type references this category, ask the user how to handle them first " +
@@ -818,26 +822,21 @@ public static class CategoryTools
         "If the full path is not known, call list_categories first. " +
         "Note: pre-seeded categories should rarely be deleted; consider update_category to rename instead.")]
     public static string DeleteCategory(
-        [Description("Full path of the category to delete, e.g. 'Electrical/Lighting'. Call list_categories if unsure.")] string category)
+        [Description("Full path, name, or short name of the category. Optional when oid is provided.")] string category = "",
+        [Description("Stable category OID. Optional when category is provided. When both are supplied, they must identify the same category.")] string? oid = null,
+        [Description("Version returned by get_category_details. When supplied, deletion fails if the category changed meanwhile.")] int? expected_version = null)
     {
         category = category?.Trim() ?? "";
-        if (string.IsNullOrEmpty(category))
-            return "Error: 'category' is required.";
+        var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
+        if (versionError != null) return versionError;
 
         try
         {
             using var conn  = FirebirdDb.OpenConnection();
-            var allCats     = LoadCatTree(conn);
-            var byFullName  = allCats.ToDictionary(
-                r => r.Str("CAT_FULLNAME"),
-                r => r,
-                StringComparer.OrdinalIgnoreCase);
-
-            category = QueryHelpers.NormalizePath(category);
-            if (!byFullName.TryGetValue(category, out var catRow))
-                return $"Error: category '{category}' not found. Call list_categories to see available categories.";
-
-            var oid = catRow.Str("Oid");
+            var selection = QueryHelpers.ResolveCategorySelector(conn, category, oid);
+            if (selection.Error != null) return selection.Error;
+            oid = selection.Oid!;
+            category = selection.CanonicalFullName;
 
             var docError = QueryHelpers.CheckDocumentsAttached(conn, oid, "category");
             if (docError != null) return docError;
@@ -893,6 +892,12 @@ public static class CategoryTools
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
+                if (!QueryHelpers.TouchCEntity(
+                        conn, txn, oid, DateTime.UtcNow, "HomeMemory", expected_version))
+                    return expected_version.HasValue
+                        ? QueryHelpers.VersionConflict("category", expected_version.Value, "get_category_details")
+                        : "Error: category no longer exists.";
+
                 // Delete Category row first (FK to CEntity.Oid), then the CEntity base row
                 FirebirdDb.ExecuteNonQuery(conn, txn,
                     """DELETE FROM "Category" WHERE "Oid" = ?""", oid);

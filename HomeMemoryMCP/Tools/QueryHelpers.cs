@@ -326,6 +326,59 @@ internal static class QueryHelpers
                       $"Use the full path instead: {paths}.");
     }
 
+    internal static (string? Oid, string CanonicalFullName, string? Error) ResolveCategorySelector(
+        FbConnection conn,
+        string? category,
+        string? oid,
+        string categoryParameter = "category",
+        string oidParameter = "oid")
+    {
+        category = string.IsNullOrWhiteSpace(category) ? null : NormalizePath(category);
+        oid = string.IsNullOrWhiteSpace(oid) ? null : oid.Trim();
+        if (category == null && oid == null)
+            return (null, "", $"Error: provide '{categoryParameter}' or '{oidParameter}'.");
+
+        string? categoryOid = null;
+        if (category != null)
+        {
+            var (resolvedOid, categoryError) = ResolveCategoryOid(conn, category);
+            if (categoryError != null) return (null, "", categoryError);
+            if (resolvedOid == null)
+                return (null, "", $"Error: category '{category}' not found. Call list_categories to see available categories.");
+            categoryOid = resolvedOid;
+        }
+
+        string? oidValue = null;
+        if (oid != null)
+        {
+            if (!Guid.TryParse(oid, out var parsedOid))
+                return (null, "", $"Error: '{oidParameter}' must be a valid GUID.");
+
+            oidValue = parsedOid.ToString("D");
+            var oidRows = FirebirdDb.ExecuteQuery(conn, $"""
+                {SqlQueries.CatCte}
+                SELECT "Oid" FROM CAT_TREE WHERE "Oid" = ?
+                """, oidValue);
+            if (oidRows.Count == 0)
+                return (null, "", $"Error: category OID '{oidValue}' not found.");
+        }
+
+        if (categoryOid != null && oidValue != null
+            && !FirebirdDb.OidKey(categoryOid).Equals(
+                FirebirdDb.OidKey(oidValue), StringComparison.OrdinalIgnoreCase))
+            return (null, "", $"Error: '{categoryParameter}' and '{oidParameter}' identify different categories.");
+
+        var selectedOid = oidValue ?? categoryOid!;
+        var canonicalRows = FirebirdDb.ExecuteQuery(conn, $"""
+            {SqlQueries.CatCte}
+            SELECT CAT_FULLNAME FROM CAT_TREE WHERE "Oid" = ?
+            """, selectedOid);
+        if (canonicalRows.Count == 0)
+            return (null, "", $"Error: category OID '{selectedOid}' not found.");
+
+        return (selectedOid, canonicalRows[0].Str("CAT_FULLNAME"), null);
+    }
+
     internal sealed record CategoryResolution(HashSet<string> Oids, string? SingleMatchName);
 
     /// <summary>

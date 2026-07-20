@@ -35,7 +35,7 @@ public static class StatusTools
             using var conn = FirebirdDb.OpenConnection();
 
             var rows = FirebirdDb.ExecuteQuery(conn, """
-                SELECT s."Oid", s."Name", s."StatusType", s."Note",
+                SELECT s."Oid", s."Name", s."StatusType", s."Note", s."OptimisticLockField",
                        COUNT(e."Oid")  AS ELEM_COUNT,
                        COUNT(cn."Oid") AS CONN_COUNT,
                        COUNT(pt."Oid") AS PT_COUNT,
@@ -45,7 +45,7 @@ public static class StatusTools
                 LEFT JOIN "Element"    e  ON e."Oid"     = ce."Oid"
                 LEFT JOIN "Connection" cn ON cn."Oid"    = ce."Oid"
                 LEFT JOIN "PartType"   pt ON pt."Oid"    = ce."Oid"
-                GROUP BY s."Oid", s."Name", s."StatusType", s."Note"
+                GROUP BY s."Oid", s."Name", s."StatusType", s."Note", s."OptimisticLockField"
                 ORDER BY s."StatusType", s."Name"
                 """);
 
@@ -79,7 +79,7 @@ public static class StatusTools
                 if (otherCount > 0) parts.Add($"{otherCount} other");
                 var detail  = parts.Count > 0 ? $"  ({string.Join(" / ", parts)})" : "";
                 var noteStr = !string.IsNullOrEmpty(note) ? $"  – {note}" : "";
-                lines.Add($"    - {name}{detail}{noteStr}");
+                lines.Add($"    - {name} [OID: {row.Str("Oid")}, version: {row.Int("OptimisticLockField")}]{detail}{noteStr}");
             }
 
             lines.Add("\n  Use exact name (case-insensitive) in create/update_element and create/update_connection. find_element and get_connections also accept partial matches plus type keywords (Existing/Planned/Removed); 'Existing' additionally matches records with no status set.");
@@ -96,20 +96,23 @@ public static class StatusTools
     [McpServerTool(Name = "update_status", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description(
         "Updates an existing status: rename, change type, or update the note. " +
-        "Required: name (current name to find the status). " +
+        "Identify by current name or stable OID. " +
         "Optional: new_name, new_status_type ('existing', 'planned', or 'removed'), " +
         "note (CLEAR to remove). " +
         "At least one optional field must be provided. " +
+        "Pass expected_version from list_statuses to prevent overwriting concurrent changes. " +
         "Forbidden characters in new_name: $*[{}]|\\<>?\"/;: and tab.")]
     public static string UpdateStatus(
-        [Description("Current name of the status to update (case-insensitive).")] string name,
+        [Description("Current name of the status to update. Optional when oid is provided.")] string name = "",
         [Description("New name (optional).")] string? new_name = null,
         [Description("New status type: 'existing', 'planned', or 'removed' (optional).")] string? new_status_type = null,
-        [Description("New note (optional). Use 'CLEAR' to remove.")] string? note = null)
+        [Description("New note (optional). Use 'CLEAR' to remove.")] string? note = null,
+        [Description("Stable status OID. Optional when name is provided. When both are supplied, they must identify the same status.")] string? oid = null,
+        [Description("Version returned by list_statuses. When supplied, the update fails if the status changed meanwhile.")] int? expected_version = null)
     {
         name = name?.Trim() ?? "";
-        if (string.IsNullOrEmpty(name))
-            return "Error: 'name' is required.";
+        var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
+        if (versionError != null) return versionError;
 
         if (new_name == null && new_status_type == null && note == null)
             return "Error: provide at least one of new_name, new_status_type, note.";
@@ -152,15 +155,10 @@ public static class StatusTools
         {
             using var conn = FirebirdDb.OpenConnection();
 
-            // Find the status by name
-            var findRows = FirebirdDb.ExecuteQuery(conn,
-                """SELECT "Oid", "Name", "StatusType", "Note" FROM "Status" WHERE UPPER("Name") = UPPER(?)""",
-                name);
-            if (findRows.Count == 0)
-                return $"Error: status '{name}' not found. Call list_statuses to see available statuses.";
-
-            var row         = findRows[0];
-            var oid         = row.Str("Oid");
+            var selection = ResolveStatusSelector(conn, name, oid);
+            if (selection.Error != null) return selection.Error;
+            var row         = selection.Row!;
+            oid             = row.Str("Oid");
             var currentST   = row.Int("StatusType");
             var currentNote = row.Str("Note");
 
@@ -188,18 +186,30 @@ public static class StatusTools
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
-                FirebirdDb.ExecuteNonQuery(conn, txn, """
+                var sql = """
                     UPDATE "Status"
                     SET "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1,
                         "Name"               = ?,
                         "StatusType"         = ?,
                         "Note"               = ?
                     WHERE "Oid" = ?
-                    """,
+                    """;
+                var args = new List<object?>
+                {
                     effectiveName,
                     effectiveST,
                     (object?)effectiveNote ?? DBNull.Value,
-                    oid);
+                    oid
+                };
+                if (expected_version.HasValue)
+                {
+                    sql += """ AND COALESCE("OptimisticLockField", 0) = ?""";
+                    args.Add(expected_version.Value);
+                }
+                if (FirebirdDb.ExecuteNonQuery(conn, txn, sql, args.ToArray()) != 1)
+                    return expected_version.HasValue
+                        ? QueryHelpers.VersionConflict("status", expected_version.Value, "list_statuses")
+                        : "Error: status no longer exists.";
 
                 var changes = new List<string>();
                 if (new_name != null)        changes.Add($"name → '{effectiveName}'");
@@ -289,28 +299,29 @@ public static class StatusTools
     [McpServerTool(Name = "delete_status", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
         "Permanently deletes a status value. " +
-        "Required: name (current status name, case-insensitive). " +
+        "Identify by current name or stable OID. Pass expected_version from list_statuses to prevent deleting a concurrently changed status. " +
         "Blocked if any record (element, connection, part type, or other) references this status. " +
         "Treat this as a stop signal: report the references and ask for explicit confirmation before " +
         "reassigning or clearing the status on those records. Never modify the references on your own. " +
         "If the status name is not known, call list_statuses first. " +
         "Note: the three default statuses (Existing, Planned, Removed) should rarely be deleted.")]
     public static string DeleteStatus(
-        [Description("Name of the status to delete (case-insensitive). Call list_statuses if unsure.")] string name)
+        [Description("Name of the status to delete. Optional when oid is provided.")] string name = "",
+        [Description("Stable status OID. Optional when name is provided. When both are supplied, they must identify the same status.")] string? oid = null,
+        [Description("Version returned by list_statuses. When supplied, deletion fails if the status changed meanwhile.")] int? expected_version = null)
     {
         name = name?.Trim() ?? "";
-        if (string.IsNullOrEmpty(name))
-            return "Error: 'name' is required.";
+        var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
+        if (versionError != null) return versionError;
 
         try
         {
             using var conn  = FirebirdDb.OpenConnection();
-            var findRows    = FirebirdDb.ExecuteQuery(conn,
-                """SELECT "Oid" FROM "Status" WHERE UPPER("Name") = UPPER(?)""", name);
-            if (findRows.Count == 0)
-                return $"Error: status '{name}' not found. Call list_statuses to see available statuses.";
-
-            var oid = findRows[0].Str("Oid");
+            var selection = ResolveStatusSelector(conn, name, oid);
+            if (selection.Error != null) return selection.Error;
+            var selectedStatus = selection.Row!;
+            oid = selectedStatus.Str("Oid");
+            name = selectedStatus.Str("Name");
 
             // Blocking check: CEntity references, split by subclass
             var usageRows  = FirebirdDb.ExecuteQuery(conn, """
@@ -352,6 +363,11 @@ public static class StatusTools
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
+                if (!TouchStatus(conn, txn, oid, expected_version))
+                    return expected_version.HasValue
+                        ? QueryHelpers.VersionConflict("status", expected_version.Value, "list_statuses")
+                        : "Error: status no longer exists.";
+
                 FirebirdDb.ExecuteNonQuery(conn, txn,
                     """DELETE FROM "Status" WHERE "Oid" = ?""", oid);
 
@@ -362,5 +378,71 @@ public static class StatusTools
         {
             return $"Error: failed to delete status: {ex.Message}";
         }
+    }
+
+    private static (Row? Row, string? Error) ResolveStatusSelector(
+        FbConnection conn,
+        string? name,
+        string? oid)
+    {
+        name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        oid = string.IsNullOrWhiteSpace(oid) ? null : oid.Trim();
+        if (name == null && oid == null)
+            return (null, "Error: provide 'name' or 'oid'.");
+
+        Row? nameRow = null;
+        if (name != null)
+        {
+            var nameRows = FirebirdDb.ExecuteQuery(conn, """
+                SELECT "Oid", "Name", "StatusType", "Note", "OptimisticLockField"
+                FROM "Status" WHERE UPPER("Name") = UPPER(?)
+                """, name);
+            if (nameRows.Count == 0)
+                return (null, $"Error: status '{name}' not found. Call list_statuses to see available statuses.");
+            if (nameRows.Count > 1)
+                return (null, $"Error: multiple statuses named '{name}' found. Correct the duplicate status data first.");
+            nameRow = nameRows[0];
+        }
+
+        Row? oidRow = null;
+        if (oid != null)
+        {
+            if (!Guid.TryParse(oid, out var parsedOid))
+                return (null, "Error: 'oid' must be a valid GUID.");
+            var oidRows = FirebirdDb.ExecuteQuery(conn, """
+                SELECT "Oid", "Name", "StatusType", "Note", "OptimisticLockField"
+                FROM "Status" WHERE "Oid" = ?
+                """, parsedOid.ToString("D"));
+            if (oidRows.Count == 0)
+                return (null, $"Error: status OID '{parsedOid:D}' not found.");
+            oidRow = oidRows[0];
+        }
+
+        if (nameRow != null && oidRow != null
+            && !FirebirdDb.OidKey(nameRow["Oid"]).Equals(
+                FirebirdDb.OidKey(oidRow["Oid"]), StringComparison.OrdinalIgnoreCase))
+            return (null, "Error: 'name' and 'oid' identify different statuses.");
+
+        return (oidRow ?? nameRow, null);
+    }
+
+    private static bool TouchStatus(
+        FbConnection conn,
+        FbTransaction txn,
+        string oid,
+        int? expectedVersion)
+    {
+        var sql = """
+            UPDATE "Status"
+            SET "OptimisticLockField" = COALESCE("OptimisticLockField", 0) + 1
+            WHERE "Oid" = ?
+            """;
+        var args = new List<object?> { oid };
+        if (expectedVersion.HasValue)
+        {
+            sql += """ AND COALESCE("OptimisticLockField", 0) = ?""";
+            args.Add(expectedVersion.Value);
+        }
+        return FirebirdDb.ExecuteNonQuery(conn, txn, sql, args.ToArray()) == 1;
     }
 }
