@@ -16,6 +16,7 @@ public static class ExploreTools
         "structural components) organised in a nested location tree. " +
         "Default (primaryAreasOnly=true): returns the location hierarchy – buildings, floors, rooms, outdoor areas, garages, " +
         "and other navigable containers. " +
+        "When an area is nested below an element that is not a primary area, the required ancestor is shown with [context]; include context nodes when constructing element paths. " +
         "Use as the first overview to understand the layout of the home and identify the right element path " +
         "for follow-up calls (find_element, list_elements, get_element_details). " +
         "This is the map, not the inventory. " +
@@ -56,19 +57,22 @@ public static class ExploreTools
 
             List<Row> rows;
             string title;
+            HashSet<string>? contextOids = null;
+            int areaCount = 0;
 
             if (primaryAreasOnly)
             {
                 var sql = new StringBuilder($"""
                     {SqlQueries.EtreeCte}
-                    SELECT et."Oid", et.FULLNAME, et."Name", et."ShortName", et.DEPTH, cat."Name" AS CATNAME,
+                    SELECT et."Oid", et."PartOfElement", et.FULLNAME, et."Name", et."ShortName", et.DEPTH,
+                           cat."Name" AS CATNAME, cat."IsAreaCategory" AS ISAREA,
                            s."Name" AS STATUSNAME, s."StatusType" AS STATUSTYPE
                     FROM ETREE et
-                    JOIN "CItem"    ci  ON ci."Oid"  = et."Oid"
-                    JOIN "Category" cat ON cat."Oid" = ci."Category"
+                    LEFT JOIN "CItem"    ci  ON ci."Oid"  = et."Oid"
+                    LEFT JOIN "Category" cat ON cat."Oid" = ci."Category"
                     LEFT JOIN "CEntity" ce ON ce."Oid" = et."Oid"
                     LEFT JOIN "Status"  s  ON s."Oid"  = ce."Status"
-                    WHERE cat."IsAreaCategory" = True
+                    WHERE 1=1
                     """);
                 var paramList = new List<object?>();
                 if (maxDepth > 0)
@@ -80,7 +84,36 @@ public static class ExploreTools
                     paramList.Add(under);
                 }
                 sql.Append(" ORDER BY et.SORTPATH");
-                rows  = FirebirdDb.ExecuteQuery(conn, sql.ToString(), paramList.ToArray());
+                var scopedRows = FirebirdDb.ExecuteQuery(conn, sql.ToString(), paramList.ToArray());
+                var byOid = scopedRows.ToDictionary(
+                    r => FirebirdDb.OidKey(r["Oid"]),
+                    r => r,
+                    StringComparer.OrdinalIgnoreCase);
+                var areaOids = scopedRows
+                    .Where(r => FirebirdDb.IsTrue(r.GetValueOrDefault("ISAREA")))
+                    .Select(r => FirebirdDb.OidKey(r["Oid"]))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var displayOids = new HashSet<string>(areaOids, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var areaOid in areaOids)
+                {
+                    var current = byOid[areaOid];
+                    while (current.GetValueOrDefault("PartOfElement") is { } parent and not DBNull)
+                    {
+                        var parentOid = FirebirdDb.OidKey(parent);
+                        if (!byOid.TryGetValue(parentOid, out var parentRow))
+                            break;
+                        current = parentRow;
+                        displayOids.Add(parentOid);
+                    }
+                }
+
+                contextOids = new HashSet<string>(displayOids, StringComparer.OrdinalIgnoreCase);
+                contextOids.ExceptWith(areaOids);
+                areaCount = areaOids.Count;
+                rows = scopedRows
+                    .Where(r => displayOids.Contains(FirebirdDb.OidKey(r["Oid"])))
+                    .ToList();
                 var depthLabel = maxDepth > 0 ? $", depth {maxDepth}" : "";
                 title = $"Building structure (areas{depthLabel}{(under.Length > 0 ? $" under '{under}'" : "")}):";
             }
@@ -129,6 +162,8 @@ public static class ExploreTools
                 var sn     = row.Str("ShortName");
                 if (!string.IsNullOrEmpty(sn) && sn != label)
                     label += $" ({sn})";
+                if (contextOids?.Contains(FirebirdDb.OidKey(row["Oid"])) == true)
+                    label += " [context]";
                 var st = row.GetValueOrDefault("STATUSTYPE");
                 if (st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2)
                     label += $"  {{{row.Str("STATUSNAME")}}}";
@@ -139,7 +174,9 @@ public static class ExploreTools
 
             lines.Add("");
             lines.Add(primaryAreasOnly
-                ? $"Total: {rows.Count} areas"
+                ? $"Total: {areaCount} areas" + (contextOids?.Count > 0
+                    ? $" (+{contextOids.Count} context node{(contextOids.Count == 1 ? "" : "s")})"
+                    : "")
                 : $"Total: {rows.Count} elements");
             return string.Join("\n", lines);
         }
