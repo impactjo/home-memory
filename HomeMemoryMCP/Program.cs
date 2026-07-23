@@ -33,16 +33,19 @@ try
 catch (FirebirdSql.Data.FirebirdClient.FbException ex)
 {
     Console.Error.WriteLine($"[HomeMemory] Failed to open database ({DbConfig.Current.DisplayName}): {ex.Message}");
+    Environment.ExitCode = 1;
     return;
 }
 catch (InvalidOperationException ex)
 {
     Console.Error.WriteLine($"[HomeMemory] {ex.Message}");
+    Environment.ExitCode = 1;
     return;
 }
 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 {
     Console.Error.WriteLine($"[HomeMemory] {ex.Message}");
+    Environment.ExitCode = 1;
     return;
 }
 
