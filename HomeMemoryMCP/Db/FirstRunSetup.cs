@@ -6,15 +6,15 @@ namespace HomeMemory.MCP.Db;
 /// </summary>
 public static class FirstRunSetup
 {
-    public static void EnsureDatabase()
+    public static bool EnsureDatabase()
     {
         if (!DbConfig.Current.RequiresLocalTemplate)
-            return;
+            return false;
 
         var dbPath = FirebirdDb.GetDbPath();
 
         if (File.Exists(dbPath))
-            return;
+            return false;
 
         var templatePath = FirebirdDb.GetTemplatePath();
         if (!File.Exists(templatePath))
@@ -27,5 +27,6 @@ public static class FirstRunSetup
         File.Copy(templatePath, dbPath);
 
         Console.Error.WriteLine($"[HomeMemory] Created new database at: {dbPath}");
+        return true;
     }
 }

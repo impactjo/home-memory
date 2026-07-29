@@ -14,9 +14,34 @@ var httpPort = int.TryParse(httpPortEnv, out var configuredPort) ? configuredPor
 var httpApiKey = Environment.GetEnvironmentVariable("HOME_MEMORY_API_KEY");
 var httpAllowedHosts = Environment.GetEnvironmentVariable("HOME_MEMORY_ALLOWED_HOSTS");
 IPAddress? httpBindAddress = null;
+IDisposable? servingLease = null;
+bool migrate = args.Any(arg => string.Equals(arg, "--migrate", StringComparison.OrdinalIgnoreCase));
+bool confirmed = args.Any(arg => string.Equals(arg, "--yes", StringComparison.OrdinalIgnoreCase));
 
 try
 {
+    if (migrate)
+    {
+        if (!confirmed)
+            throw new InvalidOperationException(
+                "Migration requires explicit confirmation. Stop all MCP servers and run again with --migrate --yes.");
+        if (!File.Exists(FirebirdDb.GetDbPath()))
+            throw new FileNotFoundException($"Database not found: {FirebirdDb.GetDbPath()}");
+
+        var result = DbMigrator.MigrateDatabase();
+        if (result.Changed)
+        {
+            Console.Error.WriteLine("[HomeMemory] Schema migration completed.");
+            Console.Error.WriteLine($"[HomeMemory] Backup: {result.Backup!.Path}");
+            Console.Error.WriteLine($"[HomeMemory] Backup SHA-256: {result.Backup.Sha256}");
+        }
+        else
+        {
+            Console.Error.WriteLine("[HomeMemory] Schema is already registered. No changes were made.");
+        }
+        return;
+    }
+
     if (isHttp)
     {
         if (!IPAddress.TryParse(httpBind, out httpBindAddress))
@@ -25,25 +50,32 @@ try
         McpServerSetup.ValidateHttpSecurity(httpBindAddress, httpApiKey, httpAllowedHosts);
     }
 
-    FirstRunSetup.EnsureDatabase();
+    bool databaseCreated = FirstRunSetup.EnsureDatabase();
+    if (databaseCreated)
+        DbMigrator.InitializeNewDatabase();
+
+    servingLease = DatabaseLifecycleLease.AcquireServing();
     DbSchemaVerifier.Verify();
-    DbMigrator.MigrateDatabase();
-    DbSeeder.SeedIfEmpty();
+    if (databaseCreated)
+        DbSeeder.SeedIfEmpty();
 }
 catch (FirebirdSql.Data.FirebirdClient.FbException ex)
 {
+    servingLease?.Dispose();
     Console.Error.WriteLine($"[HomeMemory] Failed to open database ({DbConfig.Current.DisplayName}): {ex.Message}");
     Environment.ExitCode = 1;
     return;
 }
 catch (InvalidOperationException ex)
 {
+    servingLease?.Dispose();
     Console.Error.WriteLine($"[HomeMemory] {ex.Message}");
     Environment.ExitCode = 1;
     return;
 }
 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
 {
+    servingLease?.Dispose();
     Console.Error.WriteLine($"[HomeMemory] {ex.Message}");
     Environment.ExitCode = 1;
     return;
@@ -56,48 +88,55 @@ var version = typeof(Program).Assembly
 Console.Error.WriteLine($"[HomeMemory] Home Memory {version} starting...");
 Console.Error.WriteLine($"[HomeMemory] Database: {DbConfig.Current.DisplayName}");
 
-if (isHttp)
+try
 {
-    var diagnostics = string.Equals(
-        Environment.GetEnvironmentVariable("HOME_MEMORY_HTTP_DIAGNOSTICS")?.Trim(),
-        "1", StringComparison.Ordinal);
-
-    var builder = WebApplication.CreateBuilder(args);
-    builder.Logging.ClearProviders();
-    if (diagnostics)
+    if (isHttp)
     {
-        builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
-        builder.Logging.SetMinimumLevel(LogLevel.Trace);
+        var diagnostics = string.Equals(
+            Environment.GetEnvironmentVariable("HOME_MEMORY_HTTP_DIAGNOSTICS")?.Trim(),
+            "1", StringComparison.Ordinal);
+
+        var builder = WebApplication.CreateBuilder(args);
+        builder.Logging.ClearProviders();
+        if (diagnostics)
+        {
+            builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
+            builder.Logging.SetMinimumLevel(LogLevel.Trace);
+        }
+        builder.WebHost.ConfigureKestrel(options => options.Listen(httpBindAddress!, httpPort));
+        McpServerSetup.AddHomeMcpServer(builder.Services, version).WithHttpTransport();
+
+        var app = builder.Build();
+
+        if (diagnostics)
+            app.UseDeveloperExceptionPage();
+
+        McpServerSetup.UseHttpSecurity(app, httpBindAddress!, httpApiKey, httpAllowedHosts);
+
+        app.MapMcp("/mcp");
+
+        var displayHost = httpBindAddress!.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
+            ? $"[{httpBindAddress}]"
+            : httpBindAddress.ToString();
+
+        Console.Error.WriteLine($"[HomeMemory] Transport: HTTP");
+        Console.Error.WriteLine($"[HomeMemory] Listening: http://{displayHost}:{httpPort}/mcp");
+        Console.Error.WriteLine($"[HomeMemory] Auth: {(!string.IsNullOrWhiteSpace(httpApiKey) ? "Bearer token active" : "none (loopback only)")}");
+        Console.Error.WriteLine($"[HomeMemory] Request security: Host and Origin checks active");
+        Console.Error.WriteLine($"[HomeMemory] HTTP mode: this process owns the database file");
+
+        await app.RunAsync();
     }
-    builder.WebHost.ConfigureKestrel(options => options.Listen(httpBindAddress!, httpPort));
-    McpServerSetup.AddHomeMcpServer(builder.Services, version).WithHttpTransport();
+    else
+    {
+        var builder = Host.CreateApplicationBuilder(args);
+        builder.Logging.ClearProviders();
+        McpServerSetup.AddHomeMcpServer(builder.Services, version).WithStdioServerTransport();
 
-    var app = builder.Build();
-
-    if (diagnostics)
-        app.UseDeveloperExceptionPage();
-
-    McpServerSetup.UseHttpSecurity(app, httpBindAddress!, httpApiKey, httpAllowedHosts);
-
-    app.MapMcp("/mcp");
-
-    var displayHost = httpBindAddress!.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6
-        ? $"[{httpBindAddress}]"
-        : httpBindAddress.ToString();
-
-    Console.Error.WriteLine($"[HomeMemory] Transport: HTTP");
-    Console.Error.WriteLine($"[HomeMemory] Listening: http://{displayHost}:{httpPort}/mcp");
-    Console.Error.WriteLine($"[HomeMemory] Auth: {(!string.IsNullOrWhiteSpace(httpApiKey) ? "Bearer token active" : "none (loopback only)")}");
-    Console.Error.WriteLine($"[HomeMemory] Request security: Host and Origin checks active");
-    Console.Error.WriteLine($"[HomeMemory] HTTP mode: this process owns the database file");
-
-    await app.RunAsync();
+        await builder.Build().RunAsync();
+    }
 }
-else
+finally
 {
-    var builder = Host.CreateApplicationBuilder(args);
-    builder.Logging.ClearProviders();
-    McpServerSetup.AddHomeMcpServer(builder.Services, version).WithStdioServerTransport();
-
-    await builder.Build().RunAsync();
+    servingLease?.Dispose();
 }

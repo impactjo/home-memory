@@ -16,6 +16,23 @@ Download the release ZIP from [GitHub Releases](../../releases) and follow the [
 
 On first run, Home Memory automatically creates the database directory and seeds it with over 100 editable categories and a default house structure. To use a custom database location, pass `HOME_MEMORY_DB_PATH` via `--env` when registering (see examples below).
 
+### Updating an existing database schema
+
+Normal server startup never changes the schema of an existing database. If startup
+reports that the schema is not registered or requires migration, stop every Home Memory
+and Smartconstruct process that uses the database. Then run the dedicated command with
+the same environment configuration:
+
+```powershell
+$env:HOME_MEMORY_DB_PATH = 'C:\path\to\my-home.scd'
+HomeMemoryMCP.exe --migrate --yes
+```
+
+The first migration stage supports Firebird Embedded databases. It requires explicit
+confirmation, refuses to run while a cooperating server is active, and creates a
+verified backup before changing an existing database. Keep the reported backup until
+the updated database has been tested.
+
 ### Firebird client library search order
 
 The server looks for the Firebird client library in this order:
