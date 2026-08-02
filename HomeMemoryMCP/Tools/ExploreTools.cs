@@ -200,6 +200,7 @@ public static class ExploreTools
     {
         var elems = FirebirdDb.ExecuteQuery(conn, """SELECT "Oid", "PartOfElement" FROM "Element" """);
         var children = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var parents = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var allKeys = new List<string>(elems.Count);
         foreach (var r in elems)
         {
@@ -209,24 +210,34 @@ public static class ExploreTools
             if (parent is not null and not DBNull)
             {
                 var pk = FirebirdDb.OidKey(parent);
+                parents[oid] = pk;
                 if (!children.TryGetValue(pk, out var list)) children[pk] = list = new();
                 list.Add(oid);
             }
+            else
+            {
+                parents[oid] = null;
+            }
         }
 
-        // {self + descendants} per node via memoized DFS (tree is shallow, ~7 levels).
-        // The set is stored before recursion so malformed cyclic data terminates instead of overflowing.
-        var subtree = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-        HashSet<string> Build(string node)
+        // Count descendants once in post-order. The visit state also prevents malformed cycles
+        // from recursing indefinitely; cyclic nodes are not part of the displayed ETREE anyway.
+        var below = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var visitState = new Dictionary<string, byte>(StringComparer.OrdinalIgnoreCase);
+        int CountSubtree(string node)
         {
-            if (subtree.TryGetValue(node, out var cached)) return cached;
-            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { node };
-            subtree[node] = set;
+            if (visitState.GetValueOrDefault(node) == 2) return below[node] + 1;
+            if (visitState.GetValueOrDefault(node) == 1) return 0;
+
+            visitState[node] = 1;
+            int size = 1;
             if (children.TryGetValue(node, out var kids))
-                foreach (var k in kids) set.UnionWith(Build(k));
-            return set;
+                foreach (var child in kids) size += CountSubtree(child);
+            visitState[node] = 2;
+            below[node] = size - 1;
+            return size;
         }
-        foreach (var k in allKeys) Build(k);
+        foreach (var key in allKeys) CountSubtree(key);
 
         var endpoints = FirebirdDb.ExecuteQuery(conn, """SELECT "Source", "Destination" FROM "Connection" """)
             .Select(c => (src: FirebirdDb.OidKey(c.GetValueOrDefault("Source")),
@@ -234,18 +245,43 @@ public static class ExploreTools
             .ToList();
 
         var result = new Dictionary<string, (int below, int conn, int cross)>(StringComparer.OrdinalIgnoreCase);
-        foreach (var k in allKeys)
+        foreach (var key in allKeys)
+            result[key] = (below.GetValueOrDefault(key), 0, 0);
+
+        var ancestorCache = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> Ancestors(string endpoint)
         {
-            var set = subtree[k];
-            int connCount = 0, crossCount = 0;
-            foreach (var (src, dst) in endpoints)
+            if (string.IsNullOrEmpty(endpoint) || !parents.ContainsKey(endpoint))
+                return [];
+            if (ancestorCache.TryGetValue(endpoint, out var cached))
+                return cached;
+
+            var ancestors = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string? current = endpoint;
+            while (current is not null && parents.ContainsKey(current) && ancestors.Add(current))
+                current = parents[current];
+            ancestorCache[endpoint] = ancestors;
+            return ancestors;
+        }
+
+        foreach (var (src, dst) in endpoints)
+        {
+            var srcAncestors = Ancestors(src);
+            var dstAncestors = Ancestors(dst);
+
+            foreach (var key in srcAncestors)
             {
-                bool sIn = set.Contains(src);
-                bool dIn = set.Contains(dst);
-                if (sIn || dIn) connCount++;
-                if (sIn ^ dIn)  crossCount++;
+                var counts = result[key];
+                result[key] = (counts.below, counts.conn + 1,
+                    counts.cross + (dstAncestors.Contains(key) ? 0 : 1));
             }
-            result[k] = (set.Count - 1, connCount, crossCount);
+
+            foreach (var key in dstAncestors)
+            {
+                if (srcAncestors.Contains(key)) continue;
+                var counts = result[key];
+                result[key] = (counts.below, counts.conn + 1, counts.cross + 1);
+            }
         }
         return result;
     }

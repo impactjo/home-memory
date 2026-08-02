@@ -19,7 +19,7 @@ public static class DbMigrator
     {
         using var maintenanceSession = DatabaseMaintenanceSession.Acquire();
         var result = Backfill(createBackup: true, requireLegacyMarker: true, maintenanceSession);
-        DbSchemaVerifier.Verify();
+        DbSchemaVerifier.Verify(commandTimeoutSeconds: 0);
         return result;
     }
 
@@ -27,7 +27,7 @@ public static class DbMigrator
     {
         using var maintenanceSession = DatabaseMaintenanceSession.Acquire();
         var result = Backfill(createBackup: false, requireLegacyMarker: false, maintenanceSession);
-        DbSchemaVerifier.Verify();
+        DbSchemaVerifier.Verify(commandTimeoutSeconds: 0);
         return result;
     }
 

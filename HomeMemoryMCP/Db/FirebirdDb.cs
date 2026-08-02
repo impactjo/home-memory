@@ -54,9 +54,19 @@ public static class FirebirdDb
         return Path.Combine(exeDir, "template.scd");
     }
 
-    public static FbConnection OpenConnection()
+    public static FbConnection OpenConnection(int? commandTimeoutSeconds = null)
     {
-        var conn = new FbConnection(DbConfig.Current.ConnectionString);
+        var connectionString = DbConfig.Current.ConnectionString;
+        if (commandTimeoutSeconds is int timeout)
+        {
+            var builder = new FbConnectionStringBuilder(connectionString)
+            {
+                CommandTimeout = timeout,
+            };
+            connectionString = builder.ConnectionString;
+        }
+
+        var conn = new FbConnection(connectionString);
         conn.Open();
         return conn;
     }

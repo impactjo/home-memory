@@ -14,9 +14,11 @@ public static class DbSchemaVerifier
         new("core", 1, 1),
     ];
 
-    public static void Verify()
+    public static void Verify() => Verify(commandTimeoutSeconds: null);
+
+    internal static void Verify(int? commandTimeoutSeconds)
     {
-        using var conn = FirebirdDb.OpenConnection();
+        using var conn = FirebirdDb.OpenConnection(commandTimeoutSeconds);
         VerifyLegacyOperation(conn);
         if (SchemaRegistry.Exists(conn))
         {

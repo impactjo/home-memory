@@ -391,7 +391,7 @@ public static class SchemaMigrationEngine
         ValidateMetadata(appliedBy, applicationVersion);
         ValidateBackfillEntries(entries);
 
-        using (var connection = FirebirdDb.OpenConnection())
+        using (var connection = FirebirdDb.OpenConnection(commandTimeoutSeconds: 0))
         {
             if (SchemaRegistry.Exists(connection))
                 return new DatabaseMigrationResult(false, null);
@@ -405,7 +405,7 @@ public static class SchemaMigrationEngine
         bool registryCreated = false;
         try
         {
-            using var connection = FirebirdDb.OpenConnection();
+            using var connection = FirebirdDb.OpenConnection(commandTimeoutSeconds: 0);
             SchemaRegistry.Create(connection);
             registryCreated = true;
 
@@ -422,7 +422,7 @@ public static class SchemaMigrationEngine
                 throw;
             }
 
-            using var verificationConnection = FirebirdDb.OpenConnection();
+            using var verificationConnection = FirebirdDb.OpenConnection(commandTimeoutSeconds: 0);
             verifyLegacyDatabase(verificationConnection);
             SchemaRegistry.Verify(verificationConnection, Array.Empty<SchemaComponentRequirement>(), entries);
 
@@ -434,7 +434,7 @@ public static class SchemaMigrationEngine
             {
                 try
                 {
-                    using var connection = FirebirdDb.OpenConnection();
+                    using var connection = FirebirdDb.OpenConnection(commandTimeoutSeconds: 0);
                     SchemaRegistry.Drop(connection);
                 }
                 catch (Exception compensationException)
@@ -475,7 +475,7 @@ public static class SchemaMigrationEngine
                 nameof(compensate));
 
         bool exists;
-        using (var connection = FirebirdDb.OpenConnection())
+        using (var connection = FirebirdDb.OpenConnection(commandTimeoutSeconds: 0))
         {
             SchemaRegistry.Verify(connection, Array.Empty<SchemaComponentRequirement>(), [entry]);
             var applied = SchemaRegistry.Read(connection)
@@ -524,7 +524,7 @@ public static class SchemaMigrationEngine
         {
             if (!exists && commitBeforeVerification)
             {
-                using var applyConnection = FirebirdDb.OpenConnection();
+                using var applyConnection = FirebirdDb.OpenConnection(commandTimeoutSeconds: 0);
                 using var applyTransaction = applyConnection.BeginTransaction();
                 try
                 {
@@ -539,7 +539,7 @@ public static class SchemaMigrationEngine
                 }
             }
 
-            using var connection = FirebirdDb.OpenConnection();
+            using var connection = FirebirdDb.OpenConnection(commandTimeoutSeconds: 0);
             using var transaction = connection.BeginTransaction();
             try
             {
@@ -561,7 +561,7 @@ public static class SchemaMigrationEngine
             {
                 try
                 {
-                    using var compensationConnection = FirebirdDb.OpenConnection();
+                    using var compensationConnection = FirebirdDb.OpenConnection(commandTimeoutSeconds: 0);
                     using var compensationTransaction = compensationConnection.BeginTransaction();
                     try
                     {
@@ -585,7 +585,7 @@ public static class SchemaMigrationEngine
             throw;
         }
 
-        using (var verificationConnection = FirebirdDb.OpenConnection())
+        using (var verificationConnection = FirebirdDb.OpenConnection(commandTimeoutSeconds: 0))
         {
             SchemaRegistry.Verify(
                 verificationConnection,

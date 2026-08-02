@@ -17,6 +17,7 @@ public sealed record DbConfig(
     string ConnectionString,
     bool RequiresLocalTemplate)
 {
+    private const int DefaultCommandTimeoutSeconds = 30;
     private static DbConfig? _cached;
 
     public static DbConfig Current => _cached ??= Build();
@@ -61,6 +62,7 @@ public sealed record DbConfig(
             ClientLibrary = FirebirdDb.GetClientLibPath(),
             Pooling       = pooling,
             MaxPoolSize   = pooling ? 8 : 0,
+            CommandTimeout = DefaultCommandTimeoutSeconds,
         }.ConnectionString;
 
         return new DbConfig(
@@ -112,6 +114,7 @@ public sealed record DbConfig(
             Charset    = "UTF8",
             ServerType = FbServerType.Default,
             Pooling    = pooling,
+            CommandTimeout = DefaultCommandTimeoutSeconds,
         }.ConnectionString;
 
         return new DbConfig(
