@@ -19,15 +19,7 @@ public static class McpServerSetup
 {
     public const string ServerInstructions =
         """
-        Home Memory gives your AI assistant persistent memory for everything in and around your home.
-
-        Home Memory stores places and items as elements in a nested tree, not a flat list. Places such as buildings, floors, rooms, garages, outdoor areas, or walls can hold items such as devices, furniture, tools, materials, and parts, nested as deeply as needed, e.g. a filter inside a pump. It can create the needed places from what the user says, so users can later ask at any level: "what's in the heating room?", "what's on the north wall?", "what's inside this pump?"
-
-        Use connections only for physical lines between elements, such as cables, pipes, ducts, and conduits, with source, destination, and route. Don't model such a line as an ordinary item when the physical run itself is what matters.
-
-        Track physical elements across all home domains, organized with categories: building materials (walls, windows, flooring, roof) · electrical (circuits, lighting, outlets, PV/solar, wallbox, home automation) · HVAC · plumbing · IT & communications · security (alarm, fire protection, surveillance) · household (appliances, furniture, electronics, valuables) · vehicles (car, motorcycle, e-bike, bicycle, trailer) · tools · landscaping (garden, pool, irrigation) · health · and more. Categories are fully customizable: use the built-in ones, adapt them, or create your own. Statuses are customizable too and track lifecycle state such as existing, planned, or removed. All data persists in a local database across conversations.
-
-        IMPORTANT: destructive operations. When a deletion is blocked by child elements, connections, attached documents, category usage, status references, or another dependency, treat the error as a stop signal. Report the full blocked scope to the user and ask for explicit confirmation before modifying dependencies. Never remove, detach, reassign, or cascade-delete dependent records on your own.
+        Home Memory is persistent memory for the physical contents of a home. Elements form a nested tree of places and items, nested as deeply as needed, e.g. a filter inside a pump; users can query any level. It spans every domain, from wiring and heating to furniture, tools, vehicles, and the garden. Use connections only for physical runs such as cables, pipes, and ducts; other physical things are elements. Categories and statuses are user-editable. On blocked deletion, report dependencies and ask first.
         """;
 
     public static IMcpServerBuilder AddHomeMcpServer(IServiceCollection services, string version) =>
