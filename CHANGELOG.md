@@ -2,6 +2,120 @@
 
 Notable changes per release. Download builds from the [releases page](https://github.com/impactjo/home-memory/releases).
 
+## v0.5.0: Stable IDs and safer database handling (2026-08-21)
+
+### Stable IDs and conflict-safe writes
+
+Elements, connections, categories, and statuses now have stable IDs that stay the
+same when a name or a path changes. An AI client can address a record by its ID
+instead of its current name, and pass the version it read along with the change.
+
+If the record changed in the meantime, Home Memory reports a conflict instead of
+overwriting the newer data.
+
+- The detail tools and `list_statuses` report the `oid` and a version number. The
+  create tools return the `oid` of the new record.
+- Every update, delete, and move tool accepts `oid` as an alternative to the name
+  or path, plus an optional `expected_version`. When a name and an ID are given
+  together, they must identify the same record.
+
+### Breaking changes
+
+- `get_structure_overview`: the parameter `structuralAreasOnly` is now called
+  `primaryAreasOnly`. The old name is not rejected, it is ignored, so a client
+  that still sends `structuralAreasOnly=false` quietly gets the primary-area view
+  instead of the full content tree. Rename it wherever it is stored. The wording
+  "primary area" is used consistently in tool descriptions and category output.
+- HTTP mode requires `HOME_MEMORY_API_KEY` when `HOME_MEMORY_BIND` is not a
+  loopback address. The server now refuses to start instead of printing a
+  warning. Requests are additionally checked against the expected `Host`, and
+  requests carrying an `Origin` header are rejected, because Home Memory has no
+  browser client.
+- `create_connection` and `update_connection` require `length` to be greater than
+  zero, and parse it strictly. Use a decimal point, for example `4.5`. Thousands
+  separators are no longer accepted.
+
+### Safer database handling
+
+Normal startup no longer changes the schema of an existing database. Recognized
+Home Memory databases continue to open unchanged.
+
+If Home Memory reports that a migration is required, stop every process using the
+database and run:
+
+```
+HomeMemoryMCP.exe --migrate --yes
+```
+
+The command refuses to run while the database is in use and writes a verified
+backup before it changes anything. The backup path and its checksum are printed.
+Seed data is applied only to a database that Home Memory created itself.
+
+### New
+
+- `get_structure_overview` takes `metrics="counts"` and then appends per-node
+  rollups `[b… c… x…]`: elements below the node, connections touching it, and
+  connections crossing its boundary. Rollups always cover the full subtree,
+  independent of `primaryAreasOnly`, `maxDepth`, and `under`.
+- `list_categories` and `get_category_details` count items across all
+  subcategories, matching what `get_by_category` and `get_connections` return.
+  Where a count covers both, the directly classified share is shown as
+  `; N direct`.
+- The detail tools show who created a record and when, and the same for the last
+  change. Records imported from other tools may not carry that data.
+- All tools carry MCP behavior annotations, so clients can tell reads from writes
+  without parsing descriptions.
+- Writes report non-blocking advisories: an element whose status is in an earlier
+  lifecycle phase than its parent's status, or a new connection that reuses an
+  existing connection name.
+
+### Improvements
+
+- The stdio server stays available when another process holds the database at
+  startup. The tools remain listed and the check is repeated on every tool call
+  until it succeeds, so the client does not have to be restarted.
+- Faster count rollups on larger structures.
+- Database commands time out after 30 seconds, so a blocked query returns an
+  error instead of leaving the client waiting.
+- `get_structure_overview` no longer shows misleading paths when an area sits
+  below an element that is not a primary area. The ancestors needed to reach it
+  are marked with `[context]` and counted separately in the total line.
+- Tool failures are returned as MCP errors instead of plain result text, so
+  clients can tell a failed call from a successful one.
+- Blocked deletions are described as stop signals throughout. Attached documents,
+  child categories, category usage, and status references are reported for a
+  decision instead of being cleared by the assistant.
+- Startup errors, including permission and IO problems, print a clear message and
+  exit with a non-zero exit code.
+- Upgraded to `ModelContextProtocol` 1.4.1.
+
+### Fixes
+
+- Search terms containing `%` or `_` are matched literally in `find_element` and
+  `get_connections`, across all searched fields.
+- `get_by_category` with an unknown category returns an explicit error naming the
+  category instead of reporting an empty result.
+- `get_connections(under=...)` now includes connections whose source or
+  destination is exactly that element, not only those below it.
+- `maxDepth` is applied to the primary-area overview as well, and the returned
+  title states the depth that was used.
+- Renaming an element to a name it already has is no longer rejected as a
+  conflict with itself.
+- The check for attached documents queries the correct column, so deletions are
+  blocked as documented.
+
+### Updated
+
+- Server instructions and tool descriptions were tightened: the model is stated
+  once at the server level, and the details sit in the tool and parameter
+  descriptions where they are read in context.
+- Seed data: `Fire Detector` replaces `Smoke Detector`, a `Flue System` category
+  was added under HVAC, cable and wastewater categories were refined, and seeded
+  categories carry canonical paths and purposes. Seed data applies to newly
+  created databases only.
+- Setup guide: client registration examples and a section on updating the schema
+  of an existing database.
+
 ## v0.4.0 — Category & connection details (2026-06-13)
 
 ### New tool: get_category_details
