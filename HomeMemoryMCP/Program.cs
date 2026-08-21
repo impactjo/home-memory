@@ -15,6 +15,7 @@ var httpApiKey = Environment.GetEnvironmentVariable("HOME_MEMORY_API_KEY");
 var httpAllowedHosts = Environment.GetEnvironmentVariable("HOME_MEMORY_ALLOWED_HOSTS");
 IPAddress? httpBindAddress = null;
 IDisposable? servingLease = null;
+var databaseReadiness = new DatabaseReadiness(DbSchemaVerifier.Verify);
 bool migrate = args.Any(arg => string.Equals(arg, "--migrate", StringComparison.OrdinalIgnoreCase));
 bool confirmed = args.Any(arg => string.Equals(arg, "--yes", StringComparison.OrdinalIgnoreCase));
 
@@ -55,7 +56,20 @@ try
         DbMigrator.InitializeNewDatabase();
 
     servingLease = DatabaseLifecycleLease.AcquireServing();
-    DbSchemaVerifier.Verify();
+
+    try
+    {
+        databaseReadiness.VerifyNow();
+    }
+    catch (FirebirdSql.Data.FirebirdClient.FbException ex) when (!databaseCreated && !isHttp)
+    {
+        // A database briefly held by another process must not remove the tools from the
+        // client: every tool call verifies again until it succeeds once. A first run and
+        // HTTP mode own the database file, so their access failures stay fatal.
+        Console.Error.WriteLine(
+            $"[HomeMemory] Database is currently unavailable; starting with tools in retry mode: {ex.Message}");
+    }
+
     if (databaseCreated)
         DbSeeder.SeedIfEmpty();
 }
@@ -131,7 +145,19 @@ try
     {
         var builder = Host.CreateApplicationBuilder(args);
         builder.Logging.ClearProviders();
-        McpServerSetup.AddHomeMcpServer(builder.Services, version).WithStdioServerTransport();
+        McpServerSetup.AddHomeMcpServer(builder.Services, version)
+            .WithRequestFilters(requestFilters =>
+            {
+                requestFilters.AddCallToolFilter(next => async (context, cancellationToken) =>
+                {
+                    // No tool runs before verification has succeeded once.
+                    var readinessError = await databaseReadiness.EnsureVerifiedAsync(cancellationToken);
+                    if (readinessError != null) return readinessError;
+
+                    return await next(context, cancellationToken);
+                });
+            })
+            .WithStdioServerTransport();
 
         await builder.Build().RunAsync();
     }
