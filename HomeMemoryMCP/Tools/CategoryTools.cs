@@ -440,8 +440,8 @@ public static class CategoryTools
         [Description("New short name (optional). Use 'CLEAR' to remove.")] string? new_short_name = null,
         [Description("Intended use / explanation of what this category is for ('CLEAR' to remove). Only fill with information the user explicitly provided.")] string? purpose = null,
         [Description("Short temporary planning note ('CLEAR' to remove). For permanent technical info use description instead.")] string? note = null,
-        [Description("Permanent technical info about this category itself, e.g. trade scope, conventions, references (optional, multiline, 4000 chars). Category-level only – not for individual items in this category. Use 'CLEAR' to remove.")] string? description = null,
-        [Description("Documentation guide for this category, e.g. 'how to document items of this trade' ('CLEAR' to remove).")] string? user_manual = null,
+        [Description("Permanent technical info about this category itself, e.g. trade scope, conventions, references (optional, multiline, 4000 chars). Category-level only – not for individual items in this category. Use 'CLEAR' to remove. Write distinct topics as separate paragraphs rather than one dense block of text.")] string? description = null,
+        [Description("Documentation guide for this category, e.g. 'how to document items of this trade' ('CLEAR' to remove). Write distinct topics as separate paragraphs rather than one dense block of text.")] string? user_manual = null,
         [Description("Set to true to mark as a primary area, false to unmark. Primary areas are the main location containers shown in the default structure overview (e.g. Building, Floor, Room, Garage, Outdoor Area); surface/detail zones like Wall Area or Ceiling Area are not primary areas.")] bool? is_primary_area = null,
         [Description("New parent category path or unambiguous name. Use CLEAR to move to top-level. Optional when new_parent_oid is provided.")] string? new_parent = null,
         [Description("Stable OID of the category to update. Optional when category is provided. When both are supplied, they must identify the same category.")] string? oid = null,
@@ -687,8 +687,8 @@ public static class CategoryTools
         [Description("Short name (optional), used as path segment, e.g. 'Pool'")] string? short_name = null,
         [Description("Intended use / explanation of what this category is for (optional). Only fill with information the user explicitly provided.")] string? purpose = null,
         [Description("Short temporary planning note (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
-        [Description("Permanent technical info about this category itself, e.g. trade scope, conventions, references (optional, multiline, 4000 chars). Category-level only – not for individual items in this category. Only fill with information the user explicitly provided.")] string? description = null,
-        [Description("Documentation guide for this category, e.g. 'how to document items of this trade' (optional). Only fill with information the user explicitly provided.")] string? user_manual = null,
+        [Description("Permanent technical info about this category itself, e.g. trade scope, conventions, references (optional, multiline, 4000 chars). Category-level only – not for individual items in this category. Only fill with information the user explicitly provided. Write distinct topics as separate paragraphs rather than one dense block of text.")] string? description = null,
+        [Description("Documentation guide for this category, e.g. 'how to document items of this trade' (optional). Only fill with information the user explicitly provided. Write distinct topics as separate paragraphs rather than one dense block of text.")] string? user_manual = null,
         [Description("Set to true for primary area categories (Building, Floor, Room, Garage, Outdoor Area) shown in the default structure overview. Omit or set to false (default) for trade/device categories or surface/detail zones (Wall Area, Ceiling Area).")] bool? is_primary_area = null)
     {
         name = Validate.NormalizeSingleline(name)?.Trim() ?? "";

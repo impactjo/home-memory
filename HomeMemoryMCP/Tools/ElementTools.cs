@@ -211,7 +211,7 @@ public static class ElementTools
         "Optional: parent (full path of the parent element), " +
         "short_name, status, purpose, note, description, user_manual, position. " +
         "If both this element and its parent have explicit statuses, a conflicting child status is reported as an advisory. " +
-        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user instructions -> user_manual (multiline, 4000 chars). " +
         "Forbidden characters in name/short_name: $*[{}]|\\<>?\"/;: and tab.")]
     public static string CreateElement(
         [Description("Concise name for the element, typically the object/function type, e.g. 'Socket left', 'Boiler', 'Sofa'. Brand, model, dimensions, and purchase details usually do not belong in the name; put them in description when no other field already covers them. Keep brand/model in the name only when they are the common identifier, e.g. 'Hue Bridge'. Keep a short sibling differentiator such as 'left'/'right' or a number when siblings would otherwise be ambiguous.")] string name,
@@ -221,8 +221,8 @@ public static class ElementTools
         [Description("Status name (optional). Most elements need no status – omit for normal existing items. Only set when the user explicitly mentions a status like 'planned' or 'removed'. Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not self-evident from the name (optional). Only fill with information the user explicitly provided.")] string? purpose = null,
         [Description("Short temporary to-do during planning/construction (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
-        [Description("Permanent technical information for professionals (default for longer-lived info): installation specifics, maintenance history, test results, brand, model, dimensions, purchase info — anything not already covered by other fields (optional). Only fill with information the user explicitly provided — do not generate or infer.")] string? description = null,
-        [Description("User-facing information: operating instructions, feature overview, maintenance schedule (what/when/how), troubleshooting tips (optional). Only fill with information the user explicitly provided.")] string? user_manual = null,
+        [Description("Permanent technical information for professionals (default for longer-lived info): installation specifics, maintenance history, test results, brand, model, dimensions, purchase info — anything not already covered by other fields (optional). Only fill with information the user explicitly provided — do not generate or infer. Write distinct topics as separate paragraphs rather than one dense block of text.")] string? description = null,
+        [Description("User-facing information: operating instructions, feature overview, maintenance schedule (what/when/how), troubleshooting tips (optional). Only fill with information the user explicitly provided. Write distinct topics as separate paragraphs rather than one dense block of text.")] string? user_manual = null,
         [Description("Fine-grained location within the parent, such as 'under sink' or '136 cm from left' (optional). Use this instead of putting precise positional details into the name. Only fill with information the user explicitly provided.")] string? position = null)
     {
         name = Validate.NormalizeSingleline(name)?.Trim() ?? "";
@@ -352,7 +352,7 @@ public static class ElementTools
         "Use the parent path for location; do not repeat parent context in the element name. " +
         "IMPORTANT: ALWAYS call get_element_details before updating purpose, description, note, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
-        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars, use paragraph breaks for multi-section content). " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user instructions -> user_manual (multiline, 4000 chars). " +
         "Pass expected_version from get_element_details to prevent overwriting a concurrent change. " +
         "Forbidden characters in name/short_name: $*[{}]|\\<>?\"/;: and tab.")]
     public static string UpdateElement(
@@ -363,8 +363,8 @@ public static class ElementTools
         [Description("New status name (optional). Set only when user explicitly mentions a status (e.g. 'Planned', 'Removed'). 'CLEAR' removes a previously set status. Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not already self-evident from the name ('CLEAR' to remove)")] string? purpose = null,
         [Description("Short temporary to-do during planning/construction. For permanent technical info use description instead ('CLEAR' to remove)")] string? note = null,
-        [Description("Permanent technical information for professionals (default for longer-lived info): installation specifics, maintenance history, test results, brand, model, dimensions, purchase info — anything not already covered by other fields ('CLEAR' to remove)")] string? description = null,
-        [Description("User-facing information: operating instructions, feature overview, maintenance schedule (what/when/how), troubleshooting tips ('CLEAR' to remove)")] string? user_manual = null,
+        [Description("Permanent technical information for professionals (default for longer-lived info): installation specifics, maintenance history, test results, brand, model, dimensions, purchase info — anything not already covered by other fields ('CLEAR' to remove). Write distinct topics as separate paragraphs rather than one dense block of text.")] string? description = null,
+        [Description("User-facing information: operating instructions, feature overview, maintenance schedule (what/when/how), troubleshooting tips ('CLEAR' to remove). Write distinct topics as separate paragraphs rather than one dense block of text.")] string? user_manual = null,
         [Description("Fine-grained location within the parent, such as 'under sink' or '136 cm from left' ('CLEAR' to remove). Use this instead of putting precise positional details into the name. Only fill with information the user explicitly provided.")] string? position = null,
         [Description("Stable element OID. Optional when fullname is provided. When both are supplied, they must identify the same element.")] string? oid = null,
         [Description("Version returned by get_element_details. When supplied, the update fails if the element changed meanwhile.")] int? expected_version = null)

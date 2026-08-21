@@ -374,7 +374,7 @@ public static class ConnectionTools
         "(e.g. circuit breaker → socket, boiler → radiator, main pipe → tap). " +
         "Optional: route (text description of the physical path), length (in meters), " +
         "status (e.g. 'Planned', 'Removed' – call list_statuses), purpose, note, description, user_manual. " +
-        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars). " +
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user instructions -> user_manual (multiline, 4000 chars). " +
         "Forbidden characters in name: *|<>?\" and tab.")]
     public static string CreateConnection(
         [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting circuit' or 'Cold water supply bathroom'")] string name,
@@ -386,8 +386,8 @@ public static class ConnectionTools
         [Description("Status name (optional). Most connections need no status – omit for normal existing lines. Set only when the user mentions a status like 'Planned' (new line not yet pulled) or 'Removed' (decommissioned). Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not self-evident from the name (optional). Only fill with information the user explicitly provided.")] string? purpose = null,
         [Description("Short temporary to-do during planning/construction (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
-        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details (optional). Only fill with information the user explicitly provided — do not generate or infer.")] string? description = null,
-        [Description("User-facing information: operating instructions, maintenance schedule, troubleshooting tips (optional). Only fill with information the user explicitly provided.")] string? user_manual = null)
+        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details (optional). Only fill with information the user explicitly provided — do not generate or infer. Write distinct topics as separate paragraphs rather than one dense block of text.")] string? description = null,
+        [Description("User-facing information: operating instructions, maintenance schedule, troubleshooting tips (optional). Only fill with information the user explicitly provided. Write distinct topics as separate paragraphs rather than one dense block of text.")] string? user_manual = null)
     {
         name        = Validate.NormalizeSingleline(name)?.Trim() ?? "";
         category    = category?.Trim()    ?? "";
@@ -499,7 +499,7 @@ public static class ConnectionTools
         "Pass 'CLEAR' to empty route, length, status, purpose, note, description, or user_manual. " +
         "IMPORTANT: ALWAYS call get_connection_details before updating description, note, purpose, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
-        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars, use paragraph breaks for multi-section content); end-user instructions -> user_manual (multiline, 4000 chars).")]
+        "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user instructions -> user_manual (multiline, 4000 chars).")]
     public static string UpdateConnection(
         [Description("Current name of the connection to update. Optional when oid is provided.")] string name = "",
         [Description("Full path of the current source element – narrows search if name is ambiguous (optional)")] string? source = null,
@@ -513,8 +513,8 @@ public static class ConnectionTools
         [Description("New status name ('CLEAR' to remove). Set only when the user mentions a status like 'Planned' or 'Removed'. Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not self-evident from the name ('CLEAR' to remove)")] string? purpose = null,
         [Description("Short temporary to-do during planning/construction. For permanent technical info use description instead ('CLEAR' to remove)")] string? note = null,
-        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details ('CLEAR' to remove)")] string? description = null,
-        [Description("User-facing information: operating instructions, maintenance schedule, troubleshooting tips ('CLEAR' to remove)")] string? user_manual = null,
+        [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details ('CLEAR' to remove). Write distinct topics as separate paragraphs rather than one dense block of text.")] string? description = null,
+        [Description("User-facing information: operating instructions, maintenance schedule, troubleshooting tips ('CLEAR' to remove). Write distinct topics as separate paragraphs rather than one dense block of text.")] string? user_manual = null,
         [Description("Stable connection OID. Optional when name is provided. When both are supplied, they must identify the same connection.")] string? oid = null,
         [Description("Version returned by get_connection_details. When supplied, the update fails if the connection changed meanwhile.")] int? expected_version = null)
     {
