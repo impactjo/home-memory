@@ -38,6 +38,13 @@ public static class McpServerSetup
             {
                 requestFilters.AddCallToolFilter(next => async (context, cancellationToken) =>
                 {
+                    // Argument names and required fields are checked against the tool's
+                    // input schema before the SDK binds them. A misspelled or missing
+                    // argument fails inside the binder, where the tool's own message never
+                    // runs and the caller only sees "An error occurred invoking '<tool>'.".
+                    var argumentError = ValidateArguments(context.Services, context.Params);
+                    if (argumentError != null) return argumentError;
+
                     var result = await next(context, cancellationToken);
 
                     // Tool methods use a stable "Error:" prefix so direct C# callers
@@ -53,6 +60,117 @@ public static class McpServerSetup
                     return result;
                 });
             });
+
+    /// <summary>
+    /// Checks the supplied argument names against the tool's input schema. Only names and
+    /// required fields are checked, never types: FlexBool suppresses the schema type of
+    /// boolean parameters, so a schema-faithful type check would reject valid calls.
+    /// </summary>
+    private static CallToolResult? ValidateArguments(
+        IServiceProvider? services,
+        CallToolRequestParams? request)
+    {
+        if (request?.Name is not { Length: > 0 } toolName) return null;
+
+        var tool = services?.GetServices<McpServerTool>()
+            .FirstOrDefault(candidate => candidate.ProtocolTool.Name == toolName);
+        // An unrecognized tool is the SDK's own error to report.
+        if (tool == null) return null;
+
+        var schema = tool.ProtocolTool.InputSchema;
+        if (schema.ValueKind != JsonValueKind.Object) return null;
+
+        var accepted = schema.TryGetProperty("properties", out var properties)
+            && properties.ValueKind == JsonValueKind.Object
+                ? properties.EnumerateObject().Select(property => property.Name).ToList()
+                : [];
+        var supplied = request.Arguments;
+
+        var unknown = supplied == null
+            ? []
+            : supplied.Keys.Where(name => !accepted.Contains(name, StringComparer.Ordinal)).ToList();
+        if (unknown.Count > 0)
+            return ArgumentError(UnknownArgumentMessage(toolName, unknown, accepted));
+
+        var required = schema.TryGetProperty("required", out var requiredNames)
+            && requiredNames.ValueKind == JsonValueKind.Array
+                ? requiredNames.EnumerateArray()
+                    .Select(item => item.GetString() ?? "")
+                    .Where(name => name.Length > 0)
+                    .ToList()
+                : [];
+        var missing = required.Where(name => !HasValue(supplied, name)).ToList();
+        if (missing.Count > 0)
+            return ArgumentError($"Error: {Quote(missing)} {(missing.Count == 1 ? "is" : "are")} required.");
+
+        return null;
+    }
+
+    /// <summary>
+    /// An argument passed as JSON null is treated as absent, so a required parameter
+    /// reports the same message whether it was omitted or explicitly emptied.
+    /// </summary>
+    private static bool HasValue(IDictionary<string, JsonElement>? arguments, string name) =>
+        arguments != null
+        && arguments.TryGetValue(name, out var value)
+        && value.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
+
+    private static string UnknownArgumentMessage(
+        string toolName,
+        IReadOnlyList<string> unknown,
+        IReadOnlyList<string> accepted)
+    {
+        if (accepted.Count == 0)
+            return $"Error: '{toolName}' takes no arguments.";
+
+        var message = unknown.Count == 1
+            ? $"Error: '{toolName}' has no argument {Quote(unknown)}."
+            : $"Error: '{toolName}' has no arguments {Quote(unknown)}.";
+
+        var correction = unknown.Count == 1
+            ? Correction(unknown[0], accepted)
+            : null;
+        if (correction != null)
+            message += $" Use '{correction}' instead.";
+
+        return message + $" Accepted arguments: {string.Join(", ", accepted)}.";
+    }
+
+    /// <summary>
+    /// Names the intended argument only when the supplied name itself identifies one: the
+    /// same name in another casing, or the same name with or without a role prefix, as in
+    /// 'document_oid' for 'oid'. Pairing by count instead, such as the single required
+    /// argument a call left out, proves no relation between the names and recommends a
+    /// wrong one confidently. Everything else is reported with the accepted names only.
+    /// </summary>
+    private static string? Correction(string unknown, IReadOnlyList<string> accepted)
+    {
+        var sameName = accepted
+            .Where(name => name.Equals(unknown, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (sameName.Count == 1) return sameName[0];
+
+        var affix = accepted
+            .Where(name => name.EndsWith("_" + unknown, StringComparison.OrdinalIgnoreCase)
+                || unknown.EndsWith("_" + name, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return affix.Count == 1 ? affix[0] : null;
+    }
+
+    private static string Quote(IReadOnlyList<string> names) =>
+        names.Count switch
+        {
+            1 => $"'{names[0]}'",
+            2 => $"'{names[0]}' and '{names[1]}'",
+            _ => string.Join(", ", names.Take(names.Count - 1).Select(name => $"'{name}'"))
+                 + $", and '{names[^1]}'",
+        };
+
+    private static CallToolResult ArgumentError(string message) => new()
+    {
+        IsError = true,
+        Content = [new TextContentBlock { Text = message }],
+    };
 
     /// <summary>
     /// Adds the Streamable HTTP transport. Clients that open a session through the
