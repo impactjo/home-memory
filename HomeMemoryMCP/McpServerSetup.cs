@@ -2,6 +2,7 @@ using HomeMemory.MCP.Tools;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using System.Net;
@@ -52,6 +53,16 @@ public static class McpServerSetup
                     return result;
                 });
             });
+
+    /// <summary>
+    /// Adds the Streamable HTTP transport. Clients that open a session through the
+    /// initialize handshake keep that session; clients on the 2026-07-28 revision or
+    /// later, which no longer has sessions, are served statelessly on the same endpoint.
+    /// Configured here so Program.cs and the tests cannot drift apart.
+    /// </summary>
+    public static IMcpServerBuilder WithHomeHttpTransport(this IMcpServerBuilder builder) =>
+        builder.WithHttpTransport(options =>
+            options.SessionMode = HttpServerSessionMode.StatefulForInitializeClients);
 
     /// <summary>
     /// Validates the authentication boundary for HTTP mode. Loopback may run without

@@ -118,7 +118,7 @@ try
             builder.Logging.SetMinimumLevel(LogLevel.Trace);
         }
         builder.WebHost.ConfigureKestrel(options => options.Listen(httpBindAddress!, httpPort));
-        McpServerSetup.AddHomeMcpServer(builder.Services, version).WithHttpTransport();
+        McpServerSetup.AddHomeMcpServer(builder.Services, version).WithHomeHttpTransport();
 
         var app = builder.Build();
 
