@@ -61,7 +61,9 @@ try
     {
         databaseReadiness.VerifyNow();
     }
-    catch (FirebirdSql.Data.FirebirdClient.FbException ex) when (!databaseCreated && !isHttp)
+    catch (Exception ex) when (
+        ex is DatabaseUnavailableException or FirebirdSql.Data.FirebirdClient.FbException
+        && !databaseCreated && !isHttp)
     {
         // A database briefly held by another process must not remove the tools from the
         // client: every tool call verifies again until it succeeds once. A first run and
@@ -73,7 +75,8 @@ try
     if (databaseCreated)
         DbSeeder.SeedIfEmpty();
 }
-catch (FirebirdSql.Data.FirebirdClient.FbException ex)
+catch (Exception ex) when (
+    ex is DatabaseUnavailableException or FirebirdSql.Data.FirebirdClient.FbException)
 {
     servingLease?.Dispose();
     Console.Error.WriteLine($"[HomeMemory] Failed to open database ({DbConfig.Current.DisplayName}): {ex.Message}");

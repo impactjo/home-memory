@@ -1,3 +1,4 @@
+using HomeMemory.MCP.Db;
 using ModelContextProtocol.Protocol;
 
 namespace HomeMemory.MCP;
@@ -39,16 +40,21 @@ internal sealed class DatabaseReadiness(Action verifySchema)
                 Volatile.Write(ref schemaVerified, true);
                 return null;
             }
+            catch (DatabaseUnavailableException)
+            {
+                // Temporary: the file may be free again on the next call. The Firebird error
+                // is already logged where the connection failed, so it is not repeated here.
+                Console.Error.WriteLine(
+                    "[HomeMemory] Database is currently unavailable during tool call.");
+                return ErrorResult(DatabaseUnavailableException.Explanation);
+            }
             catch (FirebirdSql.Data.FirebirdClient.FbException ex)
             {
-                // Temporary: the file may be free again on the next call.
+                // A Firebird failure that is not the known file-in-use case still keeps the
+                // server reachable, because it can be just as temporary.
                 Console.Error.WriteLine(
                     $"[HomeMemory] Database is currently unavailable during tool call: {ex.Message}");
-                return ErrorResult(
-                    "Home Memory cannot currently access the configured database. " +
-                    "Another application or another Home Memory process may still be using it. " +
-                    "Wait briefly or close the other user of the database, then retry this tool call. " +
-                    "Restarting the AI client is not required.");
+                return ErrorResult(DatabaseUnavailableException.Explanation);
             }
             catch (InvalidOperationException ex)
             {

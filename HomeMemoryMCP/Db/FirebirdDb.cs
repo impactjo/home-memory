@@ -54,6 +54,13 @@ public static class FirebirdDb
         return Path.Combine(exeDir, "template.scd");
     }
 
+    /// <summary>
+    /// Firebird reports a database file held by another process as an I/O error on the
+    /// attach, e.g. <c>I/O error during "CreateFile (open)" operation</c>. Measured against
+    /// a file held with FileShare.None; other Firebird failures keep their own message.
+    /// </summary>
+    private const int IscIoError = 335544344;
+
     public static FbConnection OpenConnection(int? commandTimeoutSeconds = null)
     {
         var connectionString = DbConfig.Current.ConnectionString;
@@ -67,7 +74,28 @@ public static class FirebirdDb
         }
 
         var conn = new FbConnection(connectionString);
-        conn.Open();
+        try
+        {
+            conn.Open();
+        }
+        catch (FbException ex) when (ex.ErrorCode == IscIoError)
+        {
+            // Translated here rather than in each tool: every tool returns ex.Message as
+            // its result text, so the raw I/O error would otherwise reach the caller.
+            // It is logged here because the tool catch blocks only build a result string:
+            // without this line the original Firebird error would be lost entirely.
+            // Neutral tag: this code is shared, so the line is also written by
+            // Smartconstruct MCP and must not name one of the two servers.
+            conn.Dispose();
+            Console.Error.WriteLine(
+                $"[Database] Unavailable ({DbConfig.Current.DisplayName}): {ex.Message}");
+            throw new DatabaseUnavailableException(ex);
+        }
+        catch
+        {
+            conn.Dispose();
+            throw;
+        }
         return conn;
     }
 
