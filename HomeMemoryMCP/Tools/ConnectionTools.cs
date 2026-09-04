@@ -292,18 +292,21 @@ public static class ConnectionTools
             var targetOid = selected.Str("Oid");
             name = selected.Str("Name");
 
-            var detail = FirebirdDb.ExecuteQuery(conn, """
+            var detail = FirebirdDb.ExecuteQuery(conn, $"""
+                {SqlQueries.CatCte}
                 SELECT c."Oid", c."Name", c."Source", c."Destination", c."Route", c."Length",
                        ce."Purpose", ce."Note", ce."Description", ce."UserManual",
                        ce."CreatedOn", ce."CreatedBy", ce."UpdatedOn", ce."UpdatedBy",
                        ce."OptimisticLockField",
                        cat."Name" AS CategoryName,
                        s."Name"   AS StatusName,
-                       pt."Name"  AS PartTypeName
+                       pt."Name"  AS PartTypeName,
+                {QueryHelpers.CategoryReferenceColumns}
                 FROM "Connection" c
                 JOIN "CEntity"  ce  ON ce."Oid"  = c."Oid"
                 JOIN "CItem"    ci  ON ci."Oid"   = c."Oid"
                 JOIN "Category" cat ON cat."Oid"  = ci."Category"
+                {QueryHelpers.CategoryReferenceJoins}
                 LEFT JOIN "Status"   s  ON s."Oid"   = ce."Status"
                 LEFT JOIN "Part"     p  ON p."Oid"   = c."Oid"
                 LEFT JOIN "PartType" pt ON pt."Oid"  = p."PartType"
@@ -321,7 +324,7 @@ public static class ConnectionTools
             var lines = new List<string> { $"Connection: {d.Str("Name")}\n" };
             lines.Add($"  OID         : {d.Str("Oid")}");
             lines.Add($"  Version     : {d.Int("OptimisticLockField")}");
-            lines.Add($"  Category    : {d.Str("CategoryName")}");
+            lines.AddRange(QueryHelpers.FormatCategoryLines(d, 12));
             var status = d.Str("StatusName");
             if (!string.IsNullOrEmpty(status))      lines.Add($"  Status      : {status}");
             var partType = d.Str("PartTypeName");

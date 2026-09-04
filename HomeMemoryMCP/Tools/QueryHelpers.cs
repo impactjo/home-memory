@@ -84,6 +84,61 @@ internal static class QueryHelpers
     }
 
     /// <summary>
+    /// Extra SELECT columns that turn a bare category name in a detail output into a reference a
+    /// follow-up call can take over unchanged: the full category path, the stable category OID, and
+    /// one flag per category text field. The flags are computed in SQL because a detail call must not
+    /// transfer the up to 4000 characters of Description and UserManual just to learn whether they
+    /// are empty. Requires <see cref="CategoryReferenceJoins"/>, an alias "cat" for the category, and
+    /// a query opened with <see cref="SqlQueries.CatCte"/>.
+    /// </summary>
+    internal const string CategoryReferenceColumns = """
+                       ct.CAT_FULLNAME AS CategoryPath,
+                       cat."Oid"       AS CategoryOid,
+                       CASE WHEN NULLIF(TRIM(catce."Purpose"), '')     IS NULL THEN 0 ELSE 1 END AS CatHasPurpose,
+                       CASE WHEN NULLIF(TRIM(catce."Note"), '')        IS NULL THEN 0 ELSE 1 END AS CatHasNote,
+                       CASE WHEN NULLIF(TRIM(catce."Description"), '') IS NULL THEN 0 ELSE 1 END AS CatHasDescription,
+                       CASE WHEN NULLIF(TRIM(catce."UserManual"), '')  IS NULL THEN 0 ELSE 1 END AS CatHasUserManual
+        """;
+
+    /// <summary>Joins required by <see cref="CategoryReferenceColumns"/>.</summary>
+    internal const string CategoryReferenceJoins = """
+                LEFT JOIN CAT_TREE   ct    ON ct."Oid"    = cat."Oid"
+                LEFT JOIN "CEntity"  catce ON catce."Oid" = cat."Oid"
+        """;
+
+    /// <summary>
+    /// Formats the category of an element or connection as a usable reference: full path, flags for
+    /// the category text fields that are filled, and the stable OID. The bare name alone is not a
+    /// reference: category names repeat across branches, so a follow-up get_category_details on the
+    /// name can resolve ambiguously and fail. Returns an empty list when the row has no category.
+    /// </summary>
+    internal static List<string> FormatCategoryLines(Row row, int labelWidth)
+    {
+        var path = row.Str("CategoryPath");
+        if (string.IsNullOrEmpty(path)) path = row.Str("CategoryName");
+        if (string.IsNullOrEmpty(path)) return [];
+
+        var flags = string.Concat(
+            row.Int("CatHasPurpose")     == 1 ? "p" : "",
+            row.Int("CatHasNote")        == 1 ? "n" : "",
+            row.Int("CatHasDescription") == 1 ? "i" : "",
+            row.Int("CatHasUserManual")  == 1 ? "u" : "");
+
+        var oid   = row.Str("CategoryOid");
+        var parts = new List<string>();
+        if (flags.Length > 0) parts.Add(flags);
+        if (!string.IsNullOrEmpty(oid)) parts.Add($"OID: {oid}");
+        var reference = parts.Count > 0 ? $"  [{string.Join("; ", parts)}]" : "";
+
+        var lines = new List<string> { $"  {"Category".PadRight(labelWidth)}: {path}{reference}" };
+        if (flags.Length > 0)
+            lines.Add($"  {new string(' ', labelWidth)}  "
+                + "[p] = purpose, [n] = note, [i] = description, [u] = user manual; "
+                + "call get_category_details for content");
+        return lines;
+    }
+
+    /// <summary>
     /// Splits a full element path into (parent, name).
     /// The parent segment includes the trailing slash, e.g. "House/GF/" and "Kitchen".
     /// Returns ("", fullname) for top-level elements.

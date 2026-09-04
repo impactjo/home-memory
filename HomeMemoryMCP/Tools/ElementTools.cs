@@ -64,7 +64,8 @@ public static class ElementTools
             var pos = target.Str("Position");
             if (!string.IsNullOrEmpty(pos)) lines.Add($"  Position    : {pos}");
 
-            var ext = FirebirdDb.ExecuteQuery(conn, """
+            var ext = FirebirdDb.ExecuteQuery(conn, $"""
+                {SqlQueries.CatCte}
                 SELECT
                     ce."Purpose",
                     ce."Note",
@@ -77,11 +78,13 @@ public static class ElementTools
                     ce."OptimisticLockField",
                     s."Name"   AS StatusName,
                     cat."Name" AS CategoryName,
-                    pt."Name"  AS PartTypeName
+                    pt."Name"  AS PartTypeName,
+                {QueryHelpers.CategoryReferenceColumns}
                 FROM "CEntity" ce
                 LEFT JOIN "Status"   s   ON s."Oid"   = ce."Status"
                 LEFT JOIN "CItem"    ci  ON ci."Oid"   = ce."Oid"
                 LEFT JOIN "Category" cat ON cat."Oid"  = ci."Category"
+                {QueryHelpers.CategoryReferenceJoins}
                 LEFT JOIN "Part"     p   ON p."Oid"    = ce."Oid"
                 LEFT JOIN "PartType" pt  ON pt."Oid"   = p."PartType"
                 WHERE ce."Oid" = ?
@@ -91,8 +94,7 @@ public static class ElementTools
             {
                 var e = ext[0];
                 lines.Add($"  Version     : {e.Int("OptimisticLockField")}");
-                if (!string.IsNullOrEmpty(e.Str("CategoryName")))
-                    lines.Add($"  Category    : {e.Str("CategoryName")}");
+                lines.AddRange(QueryHelpers.FormatCategoryLines(e, 12));
                 if (!string.IsNullOrEmpty(e.Str("StatusName")))
                     lines.Add($"  Status      : {e.Str("StatusName")}");
                 if (!string.IsNullOrEmpty(e.Str("PartTypeName")))
