@@ -1,8 +1,10 @@
-# Home Memory — Setup Guide
+# Home Memory Setup Guide
 
 ## Using the Release (recommended)
 
-Download the release ZIP from [GitHub Releases](../../releases) and follow the [Quick Start](../README.md#quick-start-windows) in the README. The release is a self-contained build, with no .NET SDK and no Firebird installation required.
+Follow the [Quick Start](../README.md#quick-start-windows) in the README for the complete Windows release setup, including download, client registration, and the first query. The release is a self-contained build, with no .NET SDK and no Firebird installation required.
+
+This guide covers custom database locations, schema migration, building from source, and troubleshooting.
 
 ## Configuration
 
@@ -25,7 +27,7 @@ the same environment configuration:
 
 ```powershell
 $env:HOME_MEMORY_DB_PATH = 'C:\path\to\my-home.scd'
-HomeMemoryMCP.exe --migrate --yes
+& 'C:\HomeMemory\HomeMemoryMCP.exe' --migrate --yes
 ```
 
 The first migration stage supports Firebird Embedded databases. It requires explicit
@@ -49,58 +51,38 @@ The server automatically sets the `FIREBIRD` environment variable (process-level
 
 ## Registering with an AI client
 
-### ChatGPT desktop app (Codex)
-
-1. Open the ChatGPT desktop app and select **Codex**
-2. Open **Settings**
-3. Select **Plugins** in the navigation, then open the **MCPs** tab
-4. Click **+ Add server**
-5. Set the name to `home-memory`
-6. Set the command to the full path of `HomeMemoryMCP.exe`, for example `C:\HomeMemory\HomeMemoryMCP.exe`
-7. Leave transport on **STDIO**
-8. Click **Save**, then restart the app if needed
-
-**Claude Code:**
-```bash
-claude mcp add home-memory --scope user -- "/path/to/HomeMemoryMCP.exe"
-```
-
-**OpenAI Codex CLI:**
-```bash
-codex mcp add home-memory -- "/path/to/HomeMemoryMCP.exe"
-```
+For standard registration, follow [Connect to your AI](../README.md#2-connect-to-your-ai) in the README. The examples below add a custom database location. If Home Memory is already registered, update that entry rather than adding a second server.
 
 ### With a custom database location
 
+Replace the executable and database paths with your own. On macOS or Linux, use the paths to your built executable and database.
+
 **Claude Code:**
-```bash
-claude mcp add home-memory --scope user --env "HOME_MEMORY_DB_PATH=/path/to/my-home.scd" -- "/path/to/HomeMemoryMCP.exe"
+```powershell
+claude mcp add home-memory --scope user --env "HOME_MEMORY_DB_PATH=C:\HomeMemoryData\my-home.scd" -- "C:\HomeMemory\HomeMemoryMCP.exe"
 ```
 
 **OpenAI Codex CLI:**
-```bash
-codex mcp add home-memory --env "HOME_MEMORY_DB_PATH=/path/to/my-home.scd" -- "/path/to/HomeMemoryMCP.exe"
+```powershell
+codex mcp add home-memory --env "HOME_MEMORY_DB_PATH=C:\HomeMemoryData\my-home.scd" -- "C:\HomeMemory\HomeMemoryMCP.exe"
 ```
 
 ### Claude Desktop
 
-Open the **Claude menu** → **Settings** → **Developer** → **Edit Config**. This opens the correct config file regardless of how Claude Desktop was installed (Store or direct install).
-
-Add the `home-memory` entry inside `mcpServers` (keep any existing entries):
+Open the configuration as described in the [README](../README.md#2-connect-to-your-ai). Set `HOME_MEMORY_DB_PATH` in the `env` block of the `home-memory` entry inside `mcpServers`:
 
 ```json
 "home-memory": {
-  "command": "C:\\path\\to\\HomeMemoryMCP.exe",
-  "args": [],
+  "command": "C:\\HomeMemory\\HomeMemoryMCP.exe",
   "env": {
-    "HOME_MEMORY_DB_PATH": "C:\\path\\to\\my-home.scd"
+    "HOME_MEMORY_DB_PATH": "C:\\HomeMemoryData\\my-home.scd"
   }
 }
 ```
 
 Omit the `env` block to use the default database location (`%LOCALAPPDATA%\HomeMemory\homememory.scd`).
 
-> **Note:** If you register Home Memory via Claude Code (`claude mcp add`), it may also appear in the Code tab. Avoid defining the same server in both the Desktop config and Claude Code, as the Desktop configuration can override the Code tab in some versions.
+Save and restart Claude Desktop. The README explains which sessions share this configuration.
 
 ### Managing registrations
 
@@ -139,11 +121,11 @@ cd home-memory
 dotnet publish HomeMemoryMCP -c Release
 ```
 
-Then register the built executable with your AI client (see [Registering with an AI client](#registering-with-an-ai-client) above).
+Then follow [Connect to your AI](../README.md#2-connect-to-your-ai), replacing the release executable path with the full path to your built executable. For a custom database location, use the [examples above](#with-a-custom-database-location).
 
 ---
 
-## Firebird Embedded — Required Runtime Files
+## Firebird Embedded Runtime Files
 
 This section is only relevant when building from source. The release ZIP includes all required files.
 
@@ -164,23 +146,37 @@ The Firebird client library alone is not enough. Firebird Embedded loads additio
 
 The equivalent shared libraries (`.so` / `.dylib`) plus `firebird.msg` and ICU data files. The exact filenames depend on your Firebird installation; check your Firebird 3 install directory.
 
-If any required file is missing, you'll see:
-`FbException: operating system directive CreateFile failed` (Windows) or a similar I/O error on other platforms. This error is misleading: it's not about file permissions, but missing Firebird runtime files.
+Missing runtime files can cause `FbException: operating system directive CreateFile failed` on Windows or a similar I/O error on other platforms. This message alone does not establish the cause; file permissions or a database held by another process can also prevent access. See [Troubleshooting](#troubleshooting).
 
 ---
 
 ## Troubleshooting
 
-### `FbException: operating system directive CreateFile failed`
+### Home Memory does not appear in the client
 
-Almost always a Firebird setup problem:
-1. Firebird not installed, or `HOME_MEMORY_FBCLIENT` pointing to the wrong location
-2. Firebird runtime files missing from the client library directory
-3. Database locked by another process
+Check that `home-memory` is registered and enabled in the client you are using. In Codex or Claude Code, use `/mcp` to inspect the connection. Follow the [client-specific restart instructions](../README.md#2-connect-to-your-ai); if it is still unavailable, start a new session.
 
-### Database locked
+Use a local session on the computer where Home Memory is installed. A cloud session does not automatically use that computer's MCP configuration. When connecting from a phone, select the host where you registered Home Memory.
 
-Home Memory uses Firebird Embedded, which takes an exclusive lock on the database file during each tool call. If another process has the file open (e.g., the Smartconstruct desktop app), you'll get a lock error. Close the other process and try again.
+### The server does not start
+
+Check the client's MCP error or server log, then verify:
+
+1. The configured command is the full path to `HomeMemoryMCP.exe`, especially if you moved or updated the installation.
+2. The complete release ZIP was extracted. Keep the executable together with its bundled files.
+3. The client can run the executable and access its files. If the error names a permission or sandbox restriction, check that client's access settings for the installation and database paths.
+
+If startup explicitly reports that the database schema is not registered or requires migration, follow [Updating an existing database schema](#updating-an-existing-database-schema).
+
+### A tool reports that the database is unavailable
+
+If a tool says "This server cannot currently access the configured database", another application or Home Memory process may still be using the file. With the default embedded database in stdio mode, Home Memory opens the file during each tool call and releases it afterwards.
+
+Wait briefly and retry the call. If the error persists, close the other process using the database. Restarting the AI client is not required. An [HTTP-mode server](HTTP-MODE.md#database-locking) holds the database open for as long as it runs.
+
+### A source-built server reports `CreateFile failed`
+
+Check that Firebird 3 is installed, `HOME_MEMORY_FBCLIENT` points to the correct client library, and the [required runtime files](#firebird-embedded-runtime-files) are present. If those are correct, check file access permissions and whether another process holds the database. Use the underlying error in the server log to narrow down the cause.
 
 ### Build errors: DLL locked
 

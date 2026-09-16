@@ -76,7 +76,17 @@ Track what's planned, what exists, and what's been removed.
 
 ## Quick Start (Windows)
 
-The release ZIP is self-contained. No .NET, no Firebird, no other software to install.
+The release ZIP is self-contained. No .NET or Firebird installation is required. You need one of the local AI clients listed below.
+
+### Set up with your local AI
+
+Already use Codex or Claude Code locally on your Windows PC? It can help install and configure Home Memory. Paste this prompt:
+
+> Set up Home Memory from https://github.com/impactjo/home-memory on this Windows PC. Follow its README and Setup Guide, use the latest official release ZIP, and register it with the local AI client I am currently using. First check whether Home Memory is already installed or registered. Preserve existing client configuration and any existing Home Memory database, and update an existing registration instead of creating a duplicate. Ask for explicit confirmation before replacing an existing installation or migrating a database. Tell me when registration is complete and whether I need to restart the client or start a new session.
+
+After registration, continue with **3. Try it** to verify the connection.
+
+Prefer to set it up yourself? Continue with **1. Download & Extract** below.
 
 ### 1. Download & Extract
 
@@ -85,24 +95,25 @@ The release ZIP is self-contained. No .NET, no Firebird, no other software to in
 
 ### 2. Connect to your AI
 
-Choose **one** of the following clients:
+Choose **one** of the following clients and use a local session on the computer where you extracted Home Memory. A cloud session does not automatically have access to this installation. For phone access to the same computer, see **4. Use it from your phone** below.
 
 <details>
 <summary><strong>ChatGPT desktop app (Codex)</strong></summary>
 
 1. Open the ChatGPT desktop app and select **Codex**
-2. Open **Settings**
-3. Select **Plugins** in the navigation, then open the **MCPs** tab
-4. Click **+ Add server**
-5. **Name:** `home-memory`
-6. **Command to launch:** `C:\HomeMemory\HomeMemoryMCP.exe`
-7. Leave transport on **STDIO** (default)
-8. Click **Save**, then restart the app if needed
+2. Open **Settings** → **MCP servers**
+3. Click **Add server**
+4. **Name:** `home-memory`
+5. Choose transport **STDIO**
+6. **Command:** `C:\HomeMemory\HomeMemoryMCP.exe` (adjust if you extracted it elsewhere)
+7. Save the server, then select **Restart**
 
 Or via Codex CLI:
 ```bash
 codex mcp add home-memory -- "C:\HomeMemory\HomeMemoryMCP.exe"
 ```
+
+The desktop app, Codex CLI, and IDE extension share MCP configuration on the same host, so register Home Memory only once. See the [official MCP guide](https://learn.chatgpt.com/docs/extend/mcp) for current client instructions.
 
 </details>
 
@@ -128,7 +139,9 @@ If you already have other MCP servers configured, add the `"home-memory"` entry 
 
 5. Save the file and restart Claude Desktop
 
-Home Memory is available in both the Chat tab and the Code tab. The **Code tab is recommended for multi-step, agentic workflows that use several MCP tools**.
+Home Memory is available in the Chat tab and in local Code tab sessions. The **Code tab is recommended for multi-step, agentic workflows that use several MCP tools**.
+
+If the same server name is also configured in Claude Code, local Code tab sessions use the Desktop definition. The standalone Claude Code CLI needs its own registration below. See [Claude's configuration sharing rules](https://code.claude.com/docs/en/desktop#mcp-servers-from-the-claude-desktop-chat-app).
 
 </details>
 
@@ -139,17 +152,23 @@ Home Memory is available in both the Chat tab and the Code tab. The **Code tab i
 claude mcp add home-memory --scope user -- "C:\HomeMemory\HomeMemoryMCP.exe"
 ```
 
+Check the connection with `/mcp` in Claude Code. If Home Memory is not available yet, start a new session.
+
 </details>
 
 ### 3. Try it
 
-On first launch, Home Memory automatically creates a local database with over 100 categories and a default house structure (floors, rooms, garage, outdoor areas). No setup wizard needed.
+On first launch, Home Memory automatically creates a local database with over 100 categories and an initial example structure (floors, rooms, garage, outdoor areas). No setup wizard needed.
 
-**Try these prompts in order:**
+**First, verify that your AI can use Home Memory:**
 
-> "Show me the structure of my home."
+> "Use the Home Memory MCP tool `get_structure_overview` to show me the structure currently stored in Home Memory. If the tool is unavailable, tell me instead of guessing."
 
-You should see your default house structure: ground floor, upper floor, basement, each with rooms. This confirms everything is working.
+You should see the initial example structure, including a ground floor, upper floor, basement, and several rooms. This confirms that your client can discover and call Home Memory's tools.
+
+If Home Memory is unavailable or reports an error, see [Troubleshooting](docs/SETUP-GUIDE.md#troubleshooting).
+
+Once this works, you normally do not need to mention Home Memory or individual tool names. Continue naturally:
 
 > "I have a Bosch washing machine in the basement."
 
@@ -159,7 +178,7 @@ Your AI creates the element, finds the right category, and places it in the base
 
 Creates a planned element, so you can track what exists and what's coming.
 
-**If it works, you're done.** Everything from here is just talking to your AI. Add rooms, rename floors, document your electrical panel, upload a photo of a device. The AI handles the rest.
+**If it works, setup is complete.** From here, you can work with your AI in natural language to adapt the example structure, add appliances, furniture, or tools, and capture details from photos or invoices.
 
 ### 4. Use it from your phone (optional)
 
@@ -172,15 +191,7 @@ Handy whenever you are away from your computer and want to look something up or 
 
 ### Build from Source (advanced)
 
-Requires [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) and [Firebird 3.0](https://firebirdsql.org/en/firebird-3-0/).
-
-```bash
-git clone https://github.com/impactjo/home-memory.git
-cd home-memory
-dotnet publish HomeMemoryMCP -c Release
-```
-
-See [Setup Guide](docs/SETUP-GUIDE.md) for details on Firebird configuration and environment variables.
+See [Building from Source](docs/SETUP-GUIDE.md#building-from-source) in the Setup Guide for prerequisites, build commands, and Firebird configuration.
 
 ## How it works
 
@@ -249,7 +260,7 @@ Stdio is the default and works for almost everyone. HTTP mode lets you run Home 
 
 ## Contributing
 
-Home Memory is early-stage. Feedback is welcome. Right now, the best way to contribute is:
+Home Memory continues to evolve, and feedback is welcome. Right now, the best way to contribute is:
 
 - **Open an issue** for bug reports, feature ideas, or questions
 - **Share your use case**: how are you using Home Memory? What's missing?
