@@ -82,7 +82,11 @@ The release ZIP is self-contained. No .NET or Firebird installation is required.
 
 Already use Codex or Claude Code locally on your Windows PC? It can help install and configure Home Memory. Paste this prompt:
 
-> Set up Home Memory from https://github.com/impactjo/home-memory on this Windows PC. Follow its README and Setup Guide, use the latest official release ZIP, and register it with the local AI client I am currently using. First check whether Home Memory is already installed or registered. Preserve existing client configuration and any existing Home Memory database, and update an existing registration instead of creating a duplicate. Ask for explicit confirmation before replacing an existing installation or migrating a database. Tell me when registration is complete and whether I need to restart the client or start a new session.
+> Set up Home Memory from https://github.com/impactjo/home-memory on this Windows PC. Follow its README and Setup Guide, use the latest official release ZIP, and register it with the local AI client I am currently using. First check whether Home Memory is already installed or registered. Preserve existing client configuration and any existing Home Memory database, and update an existing registration instead of creating a duplicate. If the downloaded release contains `skills\home-memory-documentation` and this client supports Agent Skills, install that directory as a user-level skill. Make sure any installed skill files come from the downloaded release, not from an existing development copy. If the release does not contain the directory, complete the MCP setup without it and report that the optional documentation skill was not installed. Ask for explicit confirmation before replacing an existing installation or migrating a database. Verify the MCP connection after registration. Tell me whether the server and documentation skill were installed, and whether I need to restart the client or start a new session.
+
+The MCP server gives your AI access to the local Home Memory database. The optional documentation skill adds rules for structuring that documentation. If the release ZIP contains `skills\home-memory-documentation`, that directory can be installed as a user-level skill. Clients without Agent Skills, or older releases without that directory, can still use the MCP server.
+
+To install the skill separately, ask a client that supports Agent Skills to install [`skills/home-memory-documentation`](skills/home-memory-documentation) from this repository as a user-level skill.
 
 After registration, continue with **3. Try it** to verify the connection.
 
@@ -100,13 +104,14 @@ Choose **one** of the following clients and use a local session on the computer 
 <details>
 <summary><strong>ChatGPT desktop app (Codex)</strong></summary>
 
-1. Open the ChatGPT desktop app and select **Codex**
-2. Open **Settings** → **MCP servers**
-3. Click **Add server**
-4. **Name:** `home-memory`
-5. Choose transport **STDIO**
-6. **Command:** `C:\HomeMemory\HomeMemoryMCP.exe` (adjust if you extracted it elsewhere)
-7. Save the server, then select **Restart**
+1. Click your user profile and select **Settings**
+2. In the sidebar, select **Plugins**
+3. Open the **MCPs** tab
+4. Click **Add server**
+5. **Name:** `home-memory`
+6. Choose transport **STDIO**
+7. **Command:** `C:\HomeMemory\HomeMemoryMCP.exe` (adjust if you extracted it elsewhere)
+8. Save the server, then select **Restart**
 
 Or via Codex CLI:
 ```bash
