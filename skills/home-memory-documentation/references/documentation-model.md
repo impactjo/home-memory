@@ -131,7 +131,7 @@ Field availability defines where information belongs when it is relevant; it doe
 
 The hierarchy already supplies location context, so a child name need not always repeat its room. Keep enough context for recognition and preserve established naming conventions.
 
-For a line, a name containing its kind or function and brief endpoint names is usually understandable. Full paths belong in the endpoint relationships; intermediate routing details belong in `route`. Keep technical details in the name only when they are needed for identification.
+Follow an established project convention when naming a line. Otherwise, prefer the run kind, an optional distinguishing purpose, and short names for source and destination, in that order where natural in the user's language. The name should remain understandable in a list or search result without endpoint columns. Avoid repeating context already clear from the whole name; preserve useful established identifiers such as circuit numbers. Full paths belong in the endpoint relationships and intermediate routing details in `route`. Check each name, including names copied from drafts or imports, against its actual endpoints and documentation direction before saving.
 
 `route` complements the endpoints. It does not need to repeat their complete paths or an endpoint's documented position. A known length does not establish an unknown route.
 
