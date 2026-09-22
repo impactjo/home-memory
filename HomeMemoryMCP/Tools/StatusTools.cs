@@ -21,11 +21,11 @@ public static class StatusTools
     [McpServerTool(Name = "list_statuses", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Lists all available statuses with reference counts, grouped by status type. " +
-        "Counts are shown separately for elements, connections, part types, and other records (when non-zero). " +
+        "Counts are shown separately for elements, lines, part types, and other records (when non-zero). " +
         "Status types: Existing (0), Planned (1), Removed (2). " +
-        "Use status names from this list in create_element, update_element, create_connection, update_connection, find_element, and get_connections. " +
+        "Use status names from this list in create_element, update_element, create_line, update_line, find_element, and get_lines. " +
         "create/update tools require the exact status name (case-insensitive). " +
-        "find_element and get_connections also accept partial name matches and language-independent type keywords (Existing/Planned/Removed); " +
+        "find_element and get_lines also accept partial name matches and language-independent type keywords (Existing/Planned/Removed); " +
         "the 'Existing' keyword additionally matches records with no status set. " +
         "If no suitable status exists, use create_status.")]
     public static string ListStatuses()
@@ -82,7 +82,7 @@ public static class StatusTools
                 lines.Add($"    - {name} [OID: {row.Str("Oid")}, version: {row.Int("OptimisticLockField")}]{detail}{noteStr}");
             }
 
-            lines.Add("\n  Use exact name (case-insensitive) in create/update_element and create/update_connection. find_element and get_connections also accept partial matches plus type keywords (Existing/Planned/Removed); 'Existing' additionally matches records with no status set.");
+            lines.Add("\n  Use exact name (case-insensitive) in create/update_element and create/update_line. find_element and get_lines also accept partial matches plus type keywords (Existing/Planned/Removed); 'Existing' additionally matches records with no status set.");
             return string.Join("\n", lines);
         }
         catch (Exception ex)
@@ -300,11 +300,11 @@ public static class StatusTools
     [Description(
         "Permanently deletes a status value. " +
         "Identify by current name or stable OID. Pass expected_version from list_statuses to prevent deleting a concurrently changed status. " +
-        "Blocked if any record (element, connection, part type, or other) references this status. " +
+        "Blocked if any record (element, line, part type, or other) references this status. " +
         "Treat this as a stop signal: report the references and ask for explicit confirmation before " +
         "reassigning or clearing the status on those records. Never modify the references on your own. " +
         "If the status name is not known, call list_statuses first. " +
-        "Note: the three default statuses (Existing, Planned, Removed) should rarely be deleted.")]
+        "Default statuses should rarely be deleted.")]
     public static string DeleteStatus(
         [Description("Name of the status to delete. Optional when oid is provided.")] string name = "",
         [Description("Stable status OID. Optional when name is provided. When both are supplied, they must identify the same status.")] string? oid = null,
@@ -346,14 +346,14 @@ public static class StatusTools
             {
                 var parts = new List<string>();
                 if (elemCount  > 0) parts.Add($"{elemCount} element{(elemCount == 1 ? "" : "s")}");
-                if (connCount  > 0) parts.Add($"{connCount} connection{(connCount == 1 ? "" : "s")}");
+                if (connCount  > 0) parts.Add($"{connCount} line{(connCount == 1 ? "" : "s")}");
                 if (ptCount    > 0) parts.Add($"{ptCount} part type{(ptCount == 1 ? "" : "s")}");
                 if (otherCount > 0) parts.Add($"{otherCount} other record{(otherCount == 1 ? "" : "s")}");
                 var breakdown = string.Join(", ", parts);
 
                 var hints = new List<string>();
                 if (elemCount  > 0) hints.Add($"call find_element with status='{name}' to locate the elements");
-                if (connCount  > 0) hints.Add($"call get_connections with status='{name}' to locate the connections");
+                if (connCount  > 0) hints.Add($"call get_lines with status='{name}' to locate the lines");
                 if (ptCount    > 0) hints.Add("part type status is not currently manageable via MCP");
                 if (otherCount > 0) hints.Add("other referenced records are not currently manageable via MCP");
 

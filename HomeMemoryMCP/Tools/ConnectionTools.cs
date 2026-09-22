@@ -9,34 +9,34 @@ namespace HomeMemory.MCP.Tools;
 public static class ConnectionTools
 {
 
-    [McpServerTool(Name = "get_connections", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "get_lines", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
-        "All connections of a category, grouped by source element. " +
-        "A connection is a physical line (pipe, cable, duct, conduit) running from one element to another – " +
-        "it has a source element, a destination element, an optional route description, and an optional length. " +
-        "Examples: get_connections('Pipe') → all pipelines; " +
-        "get_connections('Cable', under='House/GF') → all cables on the ground floor. " +
-        "Without category: all connections under 'under'. " +
+        "All lines of a category, grouped by source element. " +
+        "A line is a physical run such as a pipe, cable, duct, or conduit from one element to another. " +
+        "It has a source element, a destination element, an optional route description, and an optional length. " +
+        "Examples: get_lines('Pipe') returns all pipelines; " +
+        "get_lines('Cable', under='House/GF') returns all cables on the ground floor. " +
+        "Without category: all lines under 'under'. " +
         "Category: partial name (e.g. 'Cable'), full path (e.g. 'Electrical/Cable'), or short name – includes all subcategories. " +
         "If the exact category name is uncertain, use searchTerm first – " +
         "results show the category of each match, which you can then pass as the category parameter. " +
-        "searchTerm filters by connection name (partial, case-insensitive) – " +
-        "use this to find connections by keyword, e.g. searchTerm='conduit' or searchTerm='leerrohr'. " +
+        "searchTerm filters by line name (partial, case-insensitive) – " +
+        "use this to find lines by keyword, e.g. searchTerm='conduit' or searchTerm='leerrohr'. " +
         "With searchAllFields=true, searchTerm also matches Route, Purpose, Note, Description, and UserManual – " +
-        "useful when a keyword appears in a field other than the connection name. " +
+        "useful when a keyword appears in a field other than the line name. " +
         "With status: filter by status type name (Existing / Planned / Removed – language-independent) " +
         "or by status name (exact match first, partial match as fallback). " +
-        "'Existing' also includes connections with no status set, since most existing things carry no explicit status. " +
-        "Returns up to 100 connections; refine with category, under, searchTerm, or status for complete results. " +
-        "Connections with status Planned or Removed are marked with their status name. " +
+        "'Existing' also includes lines with no status set, since most existing things carry no explicit status. " +
+        "Returns up to 100 lines; refine with category, under, searchTerm, or status for complete results. " +
+        "Lines with status Planned or Removed are marked with their status name. " +
         "Note: conduit/cable endpoints may also be documented as elements – " +
         "combine with find_element(searchTerm) for a complete picture.")]
     public static string GetConnections(
-        [Description("Connection category: exact name or short name (e.g. 'Cable'), full path with '/' (e.g. 'Electrical/Cable'). Partial match as fallback; if ambiguous, an error lists full paths. Includes all subcategories.")] string category = "",
-        [Description("Spatial filter: connections whose source or destination is under this path.")] string under = "",
-        [Description("Filter by connection name (partial match, case-insensitive), e.g. 'conduit' or 'leerrohr'.")] string searchTerm = "",
+        [Description("Line category: exact name or short name (e.g. 'Cable'), full path with '/' (e.g. 'Electrical/Cable'). Partial match as fallback; if ambiguous, an error lists full paths. Includes all subcategories.")] string category = "",
+        [Description("Spatial filter: lines whose source or destination is under this path.")] string under = "",
+        [Description("Filter by line name (partial match, case-insensitive), e.g. 'conduit' or 'leerrohr'.")] string searchTerm = "",
         [Description("Also search in Route, Purpose, Note, Description, and UserManual. Default: false (name only).")] bool? searchAllFields = null,
-        [Description("Filter by status type name (Existing / Planned / Removed) or status name. 'Existing' also includes connections with no status set. Call list_statuses for options.")] string status = "")
+        [Description("Filter by status type name (Existing / Planned / Removed) or status name. 'Existing' also includes lines with no status set. Call list_statuses for options.")] string status = "")
     {
         category   = category.Trim();
         under      = under.Trim().TrimEnd('/');
@@ -196,10 +196,10 @@ public static class ConnectionTools
             if (results.Count == 0)
             {
                 var tip = !string.IsNullOrEmpty(category) ? " Tip: call list_categories for available category names." : "";
-                return $"No connections found for {catLbl}{termLbl}{stLbl}{scope}.{tip}";
+                return $"No lines found for {catLbl}{termLbl}{stLbl}{scope}.{tip}";
             }
 
-            var lines = new List<string> { $"Connections {catLbl}{termLbl}{stLbl}{scope} ({results.Count}{(truncated ? $" of {totalCount}" : "")}):\n" };
+            var lines = new List<string> { $"Lines {catLbl}{termLbl}{stLbl}{scope} ({results.Count}{(truncated ? $" of {totalCount}" : "")}):\n" };
 
             string? currentSrc = null;
             foreach (var (r, srcFn, dstFn) in results)
@@ -247,7 +247,7 @@ public static class ConnectionTools
                 }
             }
             if (truncated)
-                lines.Add($"\n(Showing first 100 of {totalCount} connections – narrow with category, under, searchTerm, or status.)");
+                lines.Add($"\n(Showing first 100 of {totalCount} lines. Narrow with category, under, searchTerm, or status.)");
             return string.Join("\n", lines);
         }
         catch (Exception ex)
@@ -256,20 +256,20 @@ public static class ConnectionTools
         }
     }
 
-    // ── Tool: get_connection_details ─────────────────────────────────────────
+    // ── Tool: get_line_details ───────────────────────────────────────────────
 
-    [McpServerTool(Name = "get_connection_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "get_line_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
-        "Full details of a single connection: category, status, source, destination, route, length, " +
+        "Full details of a single line: category, status, source, destination, route, length, " +
         "purpose, note, description, and user manual. " +
         "Identify by name or stable OID. Source and destination can narrow or verify the selection. " +
-        "update_connection requires calling this first before modifying description, note, purpose, or user_manual. " +
+        "update_line requires calling this first before modifying description, note, purpose, or user_manual. " +
         "Returns the stable OID, version, creation metadata and, when available, last-update metadata; records imported from external tools may lack audit data.")]
     public static string GetConnectionDetails(
-        [Description("Connection name to look up. Optional when oid is provided.")] string name = "",
+        [Description("Line name to look up. Optional when oid is provided.")] string name = "",
         [Description("Full path of the source element – narrows search if name is ambiguous (optional)")] string? source = null,
         [Description("Full path of the destination element – narrows search if name is ambiguous (optional)")] string? destination = null,
-        [Description("Stable connection OID returned by create_connection or this tool. Optional when name is provided.")] string? oid = null)
+        [Description("Stable line OID returned by create_line or this tool. Optional when name is provided.")] string? oid = null)
     {
         name = name?.Trim() ?? "";
         source = string.IsNullOrWhiteSpace(source) ? null : QueryHelpers.NormalizePath(source);
@@ -314,14 +314,14 @@ public static class ConnectionTools
                 """, targetOid);
 
             if (detail.Count == 0)
-                return $"Error: could not load details for connection '{name}'.";
+                return $"Error: could not load details for line '{name}'.";
 
             var d      = detail[0];
             var srcFn  = oidToFn.GetValueOrDefault(FirebirdDb.OidKey(d.GetValueOrDefault("Source")), "");
             var dstFn  = oidToFn.GetValueOrDefault(FirebirdDb.OidKey(d.GetValueOrDefault("Destination")), "");
             var length = d.GetValueOrDefault("Length");
 
-            var lines = new List<string> { $"Connection: {d.Str("Name")}\n" };
+            var lines = new List<string> { $"Line: {d.Str("Name")}\n" };
             lines.Add($"  OID         : {d.Str("Oid")}");
             lines.Add($"  Version     : {d.Int("OptimisticLockField")}");
             lines.AddRange(QueryHelpers.FormatCategoryLines(d, 12));
@@ -358,18 +358,18 @@ public static class ConnectionTools
         }
     }
 
-    // ── Tool: create_connection ───────────────────────────────────────────────
+    // ── Tool: create_line ─────────────────────────────────────────────────────
 
-    [McpServerTool(Name = "create_connection", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "create_line", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
-        "Creates a new connection between two elements. " +
-        "A connection is a physical line (pipe, cable, duct, conduit) that runs from a source element " +
+        "Creates a new line between two elements. " +
+        "A line is a physical run such as a pipe, cable, duct, or conduit from a source element " +
         "to a destination element. It has a name, a category, and optionally a route description and length. " +
-        "Connections are a power feature – use only when the physical line itself is worth documenting " +
+        "Lines are a power feature – use only when the physical run itself is worth documenting " +
         "(e.g. to track cable routes, pipe runs, or duct paths). " +
         "Required fields: name, category, source (full path of source element), " +
         "destination (full path of destination element). " +
-        "IMPORTANT – category workflow: call list_categories first; if no suitable connection " +
+        "IMPORTANT – category workflow: call list_categories first; if no suitable line " +
         "category exists (e.g. 'Electrical Cable', 'Pipe', 'Ventilation Duct'), call create_category first. " +
         "Source and destination must be exact full paths – use find_element to look them up if unsure. " +
         "Direction convention: source should be the supply/distribution side, " +
@@ -380,13 +380,13 @@ public static class ConnectionTools
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user instructions -> user_manual (multiline, 4000 chars). " +
         "Forbidden characters in name: *|<>?\" and tab.")]
     public static string CreateConnection(
-        [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting circuit' or 'Cold water supply bathroom'")] string name,
+        [Description("Line name, e.g. 'NYM-J 3x1.5 Lighting circuit' or 'Cold water supply bathroom'")] string name,
         [Description("Object category: name, short name, or full path (e.g. 'Electrical Cable', 'Pipe', or 'Electrical/Cable' when the name is ambiguous). Required!")] string category,
         [Description("Full path of the source element (where the line originates), e.g. 'House/GF/Distribution/Circuit-L1'")] string source,
         [Description("Full path of the destination element (where the line ends), e.g. 'House/GF/Living/Ceiling-Light'")] string destination,
         [Description("Route / physical path description, e.g. 'along north wall, through ceiling void' (optional)")] string? route = null,
         [Description("Length in meters (optional), e.g. 4.5")] decimal? length = null,
-        [Description("Status name (optional). Most connections need no status – omit for normal existing lines. Set only when the user mentions a status like 'Planned' (new line not yet pulled) or 'Removed' (decommissioned). Call list_statuses for options.")] string? status = null,
+        [Description("Status name (optional). Most lines need no status – omit for normal existing lines. Set only when the user mentions a status like 'Planned' (new line not yet pulled) or 'Removed' (decommissioned). Call list_statuses for options.")] string? status = null,
         [Description("Intended use, when not self-evident from the name (optional). Only fill with information the user explicitly provided.")] string? purpose = null,
         [Description("Short temporary to-do during planning/construction (optional). For permanent technical info use description instead. Only fill with information the user explicitly provided.")] string? note = null,
         [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details (optional). Only fill with information the user explicitly provided — do not generate or infer. Write distinct topics as separate paragraphs rather than one dense block of text.")] string? description = null,
@@ -483,28 +483,28 @@ public static class ConnectionTools
                     (object?)route?.Trim() ?? DBNull.Value,
                     (object?)length        ?? DBNull.Value);
 
-                return $"✓ Connection '{name}' created: {source} → {destination} (OID: {oid}).{nameAdvisory}{hint}";
+                return $"✓ Line '{name}' created: {source} → {destination} (OID: {oid}).{nameAdvisory}{hint}";
             });
         }
         catch (Exception ex)
         {
-            return $"Error: failed to create connection: {ex.Message}";
+            return $"Error: failed to create line: {ex.Message}";
         }
     }
 
-    // ── Tool: update_connection ───────────────────────────────────────────────
+    // ── Tool: update_line ─────────────────────────────────────────────────────
 
-    [McpServerTool(Name = "update_connection", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
+    [McpServerTool(Name = "update_line", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [Description(
-        "Updates an existing connection. Only provided fields are changed. " +
-        "Identify the connection by its current name or stable OID. Source and destination can narrow or verify the selection. " +
-        "Pass expected_version from get_connection_details to prevent overwriting concurrent changes. " +
+        "Updates an existing line. Only provided fields are changed. " +
+        "Identify the line by its current name or stable OID. Source and destination can narrow or verify the selection. " +
+        "Pass expected_version from get_line_details to prevent overwriting concurrent changes. " +
         "Pass 'CLEAR' to empty route, length, status, purpose, note, description, or user_manual. " +
-        "IMPORTANT: ALWAYS call get_connection_details before updating description, note, purpose, or user_manual. " +
+        "IMPORTANT: ALWAYS call get_line_details before updating description, note, purpose, or user_manual. " +
         "If the field already has content, inform the user and ask whether to replace or extend. " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); end-user instructions -> user_manual (multiline, 4000 chars).")]
     public static string UpdateConnection(
-        [Description("Current name of the connection to update. Optional when oid is provided.")] string name = "",
+        [Description("Current name of the line to update. Optional when oid is provided.")] string name = "",
         [Description("Full path of the current source element – narrows search if name is ambiguous (optional)")] string? source = null,
         [Description("Full path of the current destination element – narrows search if name is ambiguous (optional)")] string? destination = null,
         [Description("New name (optional). Forbidden characters: *|<>?\" and tab.")] string? new_name = null,
@@ -518,8 +518,8 @@ public static class ConnectionTools
         [Description("Short temporary to-do during planning/construction. For permanent technical info use description instead ('CLEAR' to remove)")] string? note = null,
         [Description("Permanent technical information (default for longer-lived info): material, specifications, installation details ('CLEAR' to remove). Write distinct topics as separate paragraphs rather than one dense block of text.")] string? description = null,
         [Description("User-facing information: operating instructions, maintenance schedule, troubleshooting tips ('CLEAR' to remove). Write distinct topics as separate paragraphs rather than one dense block of text.")] string? user_manual = null,
-        [Description("Stable connection OID. Optional when name is provided. When both are supplied, they must identify the same connection.")] string? oid = null,
-        [Description("Version returned by get_connection_details. When supplied, the update fails if the connection changed meanwhile.")] int? expected_version = null)
+        [Description("Stable line OID. Optional when name is provided. When both are supplied, they must identify the same line.")] string? oid = null,
+        [Description("Version returned by get_line_details. When supplied, the update fails if the line changed meanwhile.")] int? expected_version = null)
     {
         name = name?.Trim() ?? "";
         var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
@@ -586,7 +586,7 @@ public static class ConnectionTools
                 WHERE c."Oid" = ?
                 """, targetOid);
             if (curConnRows.Count == 0)
-                return "Error: connection data not found.";
+                return "Error: line data not found.";
             var curConn = curConnRows[0];
 
             string? categoryOid = null;
@@ -679,8 +679,8 @@ public static class ConnectionTools
                         conn, txn, targetOid, now, "HomeMemory", expected_version))
                     return expected_version.HasValue
                         ? QueryHelpers.VersionConflict(
-                            "connection", expected_version.Value, "get_connection_details")
-                        : "Error: connection no longer exists. Call get_connection_details again.";
+                            "line", expected_version.Value, "get_line_details")
+                        : "Error: line no longer exists. Call get_line_details again.";
 
                 if (updateCategory)
                     FirebirdDb.ExecuteNonQuery(conn, txn,
@@ -723,7 +723,7 @@ public static class ConnectionTools
                         status == "CLEAR" ? DBNull.Value : (object)statusOid!, targetOid);
 
                 var displayName = new_name ?? curConn.Str("Name");
-                var result = $"✓ Connection '{displayName}' updated.";
+                var result = $"✓ Line '{displayName}' updated.";
                 foreach (var adv in overwriteAdvisories)
                     result += $"\n  Advisory: {adv}.";
                 result += nameAdvisory + combinationHint;
@@ -732,24 +732,24 @@ public static class ConnectionTools
         }
         catch (Exception ex)
         {
-            return $"Error: failed to update connection: {ex.Message}";
+            return $"Error: failed to update line: {ex.Message}";
         }
     }
 
-    // ── Tool: delete_connection ───────────────────────────────────────────────
+    // ── Tool: delete_line ─────────────────────────────────────────────────────
 
-    [McpServerTool(Name = "delete_connection", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
+    [McpServerTool(Name = "delete_line", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
-        "Deletes a connection identified by name or stable OID. Source and destination can narrow or verify the selection. " +
-        "Pass expected_version from get_connection_details to prevent deleting a concurrently changed connection. " +
+        "Deletes a line identified by name or stable OID. Source and destination can narrow or verify the selection. " +
+        "Pass expected_version from get_line_details to prevent deleting a concurrently changed line. " +
         "Blocked if documents are attached. Treat this as a stop signal: report the attached documents " +
         "and ask for explicit confirmation before detaching them. Never detach them on your own.")]
     public static string DeleteConnection(
-        [Description("Connection name, e.g. 'NYM-J 3x1.5 Lighting'. Optional when oid is provided.")] string name = "",
+        [Description("Line name, e.g. 'NYM-J 3x1.5 Lighting'. Optional when oid is provided.")] string name = "",
         [Description("Full path of the source element to narrow the search (optional)")] string? source = null,
         [Description("Full path of the destination element to narrow the search (optional)")] string? destination = null,
-        [Description("Stable connection OID. Optional when name is provided. When both are supplied, they must identify the same connection.")] string? oid = null,
-        [Description("Version returned by get_connection_details. When supplied, deletion fails if the connection changed meanwhile.")] int? expected_version = null)
+        [Description("Stable line OID. Optional when name is provided. When both are supplied, they must identify the same line.")] string? oid = null,
+        [Description("Version returned by get_line_details. When supplied, deletion fails if the line changed meanwhile.")] int? expected_version = null)
     {
         name = name?.Trim() ?? "";
         var versionError = QueryHelpers.ValidateExpectedVersion(expected_version);
@@ -769,10 +769,10 @@ public static class ConnectionTools
             var targetOid = selected.Str("Oid");
             name = selected.Str("Name");
 
-            var docError = QueryHelpers.CheckDocumentsAttached(conn, targetOid, "connection");
+            var docError = QueryHelpers.CheckDocumentsAttached(conn, targetOid, "line");
             if (docError != null) return docError;
 
-            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, targetOid, "connection");
+            var advisories = QueryHelpers.CollectDeleteAdvisories(conn, targetOid, "line");
 
             return FirebirdDb.RunInTransaction(conn, txn =>
             {
@@ -780,7 +780,7 @@ public static class ConnectionTools
                     && !QueryHelpers.TouchCEntity(
                         conn, txn, targetOid, DateTime.UtcNow, "HomeMemory", expected_version))
                     return QueryHelpers.VersionConflict(
-                        "connection", expected_version.Value, "get_connection_details");
+                        "line", expected_version.Value, "get_line_details");
 
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Connection"     WHERE "Oid"   = ?""", targetOid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "Part"           WHERE "Oid"   = ?""", targetOid);
@@ -790,7 +790,7 @@ public static class ConnectionTools
                 catch (FbException ex) when (ex.ErrorCode is 335544580 or 335544569) { /* table absent – skip */ }
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CItem"          WHERE "Oid"   = ?""", targetOid);
                 FirebirdDb.ExecuteNonQuery(conn, txn, """DELETE FROM "CEntity"        WHERE "Oid"   = ?""", targetOid);
-                var result = $"✓ Connection '{name}' deleted.";
+                var result = $"✓ Line '{name}' deleted.";
                 if (advisories.Count > 0)
                     result += $"\n  Advisory: {string.Join("; ", advisories)}.";
                 return result;
@@ -798,7 +798,7 @@ public static class ConnectionTools
         }
         catch (Exception ex)
         {
-            return $"Error: failed to delete connection: {ex.Message}";
+            return $"Error: failed to delete line: {ex.Message}";
         }
     }
 }

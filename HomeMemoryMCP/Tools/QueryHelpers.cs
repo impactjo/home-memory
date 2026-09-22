@@ -239,17 +239,17 @@ internal static class QueryHelpers
                 WHERE "Oid" = ?
                 """, parsedOid.ToString("D"));
             if (oidMatches.Count == 0)
-                return (null, $"Error: connection OID '{parsedOid:D}' not found.");
+                return (null, $"Error: line OID '{parsedOid:D}' not found.");
 
             var oidRow = oidMatches[0];
             if (name != null && !oidRow.Str("Name").Equals(name, StringComparison.OrdinalIgnoreCase))
-                return (null, "Error: 'name' and 'oid' identify different connections.");
+                return (null, "Error: 'name' and 'oid' identify different lines.");
             if (sourceOid != null && !FirebirdDb.OidKey(oidRow["Source"]).Equals(
                     FirebirdDb.OidKey(sourceOid), StringComparison.OrdinalIgnoreCase))
-                return (null, "Error: 'source' does not match the connection identified by 'oid'.");
+                return (null, "Error: 'source' does not match the line identified by 'oid'.");
             if (destinationOid != null && !FirebirdDb.OidKey(oidRow["Destination"]).Equals(
                     FirebirdDb.OidKey(destinationOid), StringComparison.OrdinalIgnoreCase))
-                return (null, "Error: 'destination' does not match the connection identified by 'oid'.");
+                return (null, "Error: 'destination' does not match the line identified by 'oid'.");
 
             return (oidRow, null);
         }
@@ -269,10 +269,10 @@ internal static class QueryHelpers
 
         var matches = FirebirdDb.ExecuteQuery(conn, sql, args.ToArray());
         if (matches.Count == 0)
-            return (null, $"Error: connection '{name}' not found. " +
+            return (null, $"Error: line '{name}' not found. " +
                 "Tip: provide source, destination, or oid to narrow the search.");
         if (matches.Count > 1)
-            return (null, $"Error: {matches.Count} connections named '{name}' found. " +
+            return (null, $"Error: {matches.Count} lines named '{name}' found. " +
                 "Provide source, destination, or oid to narrow the search.");
 
         return (matches[0], null);
@@ -732,7 +732,7 @@ internal static class QueryHelpers
             """, args.ToArray());
 
         return FirebirdDb.CountResult(rows) > 0
-            ? "Error: a connection with the same name, category, source, and destination already exists."
+            ? "Error: a line with the same name, category, source, and destination already exists."
             : null;
     }
 
@@ -759,7 +759,7 @@ internal static class QueryHelpers
                 """, args.ToArray());
             var count = FirebirdDb.CountResult(rows);
             return count > 0
-                ? $"\n  Note: {count} other connection(s) with the same source, destination, and category already exist."
+                ? $"\n  Note: {count} other line(s) with the same source, destination, and category already exist."
                 : "";
         }
         catch { return ""; }
@@ -781,7 +781,7 @@ internal static class QueryHelpers
             args);
         var count = FirebirdDb.CountResult(rows);
         return count > 0
-            ? $"\n  Advisory: {count} other connection(s) with the same name already exist."
+            ? $"\n  Advisory: {count} other line(s) with the same name already exist."
             : "";
     }
 }

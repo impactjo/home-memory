@@ -14,8 +14,8 @@ public static class ElementTools
     [Description(
         "Full details of a single element: properties (category, status, part type, " +
         "purpose, note, description, user manual), direct child elements, " +
-        "and all incoming and outgoing connections (physical lines: pipes, cables, ducts). " +
-        "Identify the element by exact full path or OID. Use when you need details or connections. " +
+        "and all incoming and outgoing lines such as pipes, cables, and ducts. " +
+        "Identify the element by exact full path or OID. Use when you need details or lines. " +
         "An element is any physical item in the building: installed equipment, appliance, " +
         "furniture, fixture, tool, or location container (room, floor, etc.). " +
         "Returns the stable OID, version, creation metadata and, when available, last-update metadata; records imported from external tools may lack audit data.")]
@@ -144,7 +144,7 @@ public static class ElementTools
 
             if (connOut.Count > 0)
             {
-                lines.Add($"\n  Outgoing connections ({connOut.Count}):");
+                lines.Add($"\n  Outgoing lines ({connOut.Count}):");
                 foreach (var c in connOut)
                 {
                     var destFull = oidToRow.TryGetValue(FirebirdDb.OidKey(c.GetValueOrDefault("Destination")), out var dr)
@@ -168,7 +168,7 @@ public static class ElementTools
 
             if (connIn.Count > 0)
             {
-                lines.Add($"\n  Incoming connections ({connIn.Count}):");
+                lines.Add($"\n  Incoming lines ({connIn.Count}):");
                 foreach (var c in connIn)
                 {
                     var srcFull = oidToRow.TryGetValue(FirebirdDb.OidKey(c.GetValueOrDefault("Source")), out var sr)
@@ -184,7 +184,7 @@ public static class ElementTools
             }
 
             if (children.Count == 0 && connOut.Count == 0 && connIn.Count == 0)
-                lines.Add("\n  (No child elements or connections)");
+                lines.Add("\n  (No child elements or lines)");
 
             return string.Join("\n", lines);
         }
@@ -562,8 +562,8 @@ public static class ElementTools
     [McpServerTool(Name = "delete_element", ReadOnly = false, Destructive = true, Idempotent = true, OpenWorld = false)]
     [Description(
         "Deletes an element from the database. " +
-        "Fails if the element has child elements, connections, or attached documents. " +
-        "When deletion fails for this reason, treat it as a stop signal: report the affected scope to the user and ask for explicit confirmation – never cascade-delete by removing children or connections first on your own. " +
+        "Fails if the element has child elements, lines, or attached documents. " +
+        "When deletion fails for this reason, treat it as a stop signal: report the affected scope to the user and ask for explicit confirmation. Never cascade-delete by removing children or lines first on your own. " +
         "Identify by exact full path or stable OID. Pass expected_version from get_element_details to prevent deleting a concurrently changed element. " +
         "Deletes from all 4 database tables (Element, Part, CItem, CEntity) in a single transaction.")]
     public static string DeleteElement(
@@ -596,7 +596,7 @@ public static class ElementTools
                 targetOid, targetOid);
             var connCount = FirebirdDb.CountResult(connections);
             if (connCount > 0)
-                return $"Error: element has {connCount} connection(s). Report this to the user and ask for explicit confirmation before removing any of them.";
+                return $"Error: element has {connCount} line(s). Report this to the user and ask for explicit confirmation before removing any of them.";
 
             var docError = QueryHelpers.CheckDocumentsAttached(conn, targetOid, "element");
             if (docError != null) return docError;

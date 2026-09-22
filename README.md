@@ -64,10 +64,10 @@ Vision-capable AIs recognize the device and create the element via MCP.
 **Read an invoice and extract devices:**
 > *(attach a PDF invoice)* "Extract the installed devices and add them to my home."
 
-**Track connections between elements:**
+**Track lines between elements:**
 > "The circuit breaker panel feeds the kitchen outlet via NYM-J 3x1.5."
 
-Cable routes, pipe runs, duct paths, all documented as connections between elements.
+Cable routes, pipe runs, and duct paths, all documented as lines between elements.
 
 **Plan renovations:**
 > "We're planning a PV system on the roof." &middot; "The old oil heater was removed last year."
@@ -217,7 +217,7 @@ Home Memory implements the [Model Context Protocol (MCP)](https://modelcontextpr
 |---|---|---|
 | **Explore** | `get_structure_overview`, `find_element`, `list_elements`, `get_element_details`, `get_recent_changes` | Browse your home, search by name/path/status, get full details |
 | **Manage Elements** | `create_element`, `update_element`, `delete_element`, `move_element` | Add devices, furniture, fixtures, or entire rooms and floors |
-| **Connections** | `get_connections`, `get_connection_details`, `create_connection`, `update_connection`, `delete_connection` | Document physical lines: cables, pipes, ducts, conduits |
+| **Lines** | `get_lines`, `get_line_details`, `create_line`, `update_line`, `delete_line` | Document physical runs: cables, pipes, ducts, conduits |
 | **Categories** | `list_categories`, `get_by_category`, `get_category_details`, `create_category`, `update_category`, `delete_category` | Over 100 built-in, editable categories across all domains |
 | **Status** | `list_statuses`, `create_status`, `update_status`, `delete_status` | Track what's existing, planned, or removed |
 

@@ -26,15 +26,15 @@ public static class ExploreTools
         "With 'under': restrict tree to a sub-path, e.g. 'House/GF/Office' – " +
         "shows only elements within that area, depth relative to that root. " +
         "Elements with status Planned or Removed are marked with their status name. " +
-        "With metrics=\"counts\": appends three rollup numbers per node as [b… c… x…] – " +
-        "b (below: elements in the subtree under the node), c (conn: connections touching the subtree), " +
-        "x (cross: connections crossing the subtree boundary). " +
+        "With metrics=\"counts\": appends three rollup numbers per node as [b… l… x…] – " +
+        "b (below: elements in the subtree under the node), l (lines touching the subtree), " +
+        "x (lines crossing the subtree boundary). " +
         "x is the coupling indicator – how strongly a subtree is wired to the rest of the home.")]
     public static string GetStructureOverview(
         [Description("Show only primary areas (categories flagged as primary area). Primary areas are the main location containers shown in the default structure overview, e.g. buildings, floors, rooms, garages, outdoor areas. Default: true.")] bool primaryAreasOnly = true,
         [Description("Maximum depth relative to 'under' if specified. Values greater than 0 limit the returned tree. Default: unlimited for the primary-area overview; otherwise 3 for whole-building content and unlimited when browsing area content with under + primaryAreasOnly=false.")] int maxDepth = 0,
         [Description("Restrict tree to this sub-path, e.g. 'House/GF/Office'. Empty = entire building.")] string under = "",
-        [Description("Set to \"counts\" to append per-node rollups [b… c… x…] (below, connections touching, connections crossing the boundary). Rollups always cover the full subtree, regardless of primaryAreasOnly/maxDepth/under. Default: empty (no metrics).")] string metrics = "")
+        [Description("Set to \"counts\" to append per-node rollups [b… l… x…] (below, lines touching, lines crossing the boundary). Rollups always cover the full subtree, regardless of primaryAreasOnly/maxDepth/under. Default: empty (no metrics).")] string metrics = "")
     {
         under = under.Trim().TrimEnd('/');
         int depthOffset = under.Length == 0 ? 0 : under.Count(c => c == '/');
@@ -152,7 +152,7 @@ public static class ExploreTools
 
             var lines = new List<string> { $"{title}\n" };
             if (rollups is not null)
-                lines.Add("Metrics per node: b = below (elements in subtree) c = conn (connections touching subtree) x = cross (connections crossing the subtree boundary)\n");
+                lines.Add("Metrics per node: b = below (elements in subtree) l = lines touching subtree x = lines crossing the subtree boundary\n");
             foreach (var row in rows)
             {
                 int relDepth = Convert.ToInt32(row["DEPTH"]) - depthOffset;
@@ -168,7 +168,7 @@ public static class ExploreTools
                 if (st is not null and not DBNull && Convert.ToInt32(st) is 1 or 2)
                     label += $"  {{{row.Str("STATUSNAME")}}}";
                 if (rollups is not null && rollups.TryGetValue(FirebirdDb.OidKey(row["Oid"]), out var m))
-                    label += $"  [b{m.below} c{m.conn} x{m.cross}]";
+                    label += $"  [b{m.below} l{m.conn} x{m.cross}]";
                 lines.Add($"{indent}{icon} {label}");
             }
 
@@ -301,8 +301,8 @@ public static class ExploreTools
         "With 'searchAllFields=true': also searches in Purpose, Note, Description, UserManual, and Position – " +
         "useful when a keyword appears in a field but not in the element name. " +
         "Not suitable for browsing all content of an area – for that use get_structure_overview(under=..., primaryAreasOnly=false) which returns a complete tree without a result limit. " +
-        "Note: physical lines (pipes, cables, conduits) are often documented as connections, not elements – " +
-        "also call get_connections with searchTerm when searching for cables, pipes, or conduits.")]
+        "Note: pipes, cables, ducts, and conduits are often documented as lines, not elements. " +
+        "Also call get_lines with searchTerm when searching for them.")]
     public static string FindElement(
         [Description("Search term, e.g. 'socket'. Empty = all elements (only useful with under, status, or category).")] string searchTerm = "",
         [Description("Path filter: only elements below this path, e.g. 'House/FF' or 'House/GF/Office'.")] string under = "",
@@ -593,11 +593,11 @@ public static class ExploreTools
 
     [McpServerTool(Name = "get_recent_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
-        "Shows recently created or updated items across elements, connections, and categories – " +
+        "Shows recently created or updated items across elements, lines, and categories. " +
         "newest first. Useful after a documentation session to review what was added or changed. " +
-        "With 'type': restrict to 'element', 'connection', or 'category'.")]
+        "With 'type': restrict to 'element', 'line', or 'category'.")]
     public static string GetRecentChanges(
         [Description("Maximum number of results (1–200). Default: 20.")] int limit = 20,
-        [Description("Restrict to item type: 'element', 'connection', or 'category'. Empty = all.")] string type = "")
+        [Description("Restrict to item type: 'element', 'line', or 'category'. Empty = all.")] string type = "")
         => RecentChangesCore.Execute(limit, type, HomeMemoryRecentChangeSource.Instance);
 }

@@ -20,7 +20,7 @@ public static class McpServerSetup
 {
     public const string ServerInstructions =
         """
-        Home Memory is persistent memory for the physical contents of a home. Elements form a nested tree of places and items, nested as deeply as needed, e.g. a filter inside a pump; users can query any level. It spans every domain, from wiring and heating to furniture, tools, vehicles, and the garden. Use connections only for physical runs such as cables, pipes, and ducts; other physical things are elements. Categories and statuses are user-editable. On blocked deletion, report dependencies and ask first.
+        Home Memory is persistent memory for the physical contents of a home. Elements form a nested tree of places and items, nested as deeply as needed, e.g. a filter inside a pump; users can query any level. It spans every domain, from wiring and heating to furniture, tools, vehicles, and the garden. Use lines only for physical runs such as cables, pipes, ducts, and conduits; other physical things are elements. Categories and statuses are user-editable. On blocked deletion, report dependencies and ask first.
         """;
 
     public static IMcpServerBuilder AddHomeMcpServer(IServiceCollection services, string version) =>

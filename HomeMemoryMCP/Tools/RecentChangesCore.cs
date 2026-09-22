@@ -113,7 +113,7 @@ public sealed class HomeMemoryRecentChangeSource : IRecentChangeSource
     public static HomeMemoryRecentChangeSource Instance { get; } = new();
 
     public IReadOnlyCollection<string> SupportedTypes { get; } =
-        ["element", "connection", "category"];
+        ["element", "line", "category"];
 
     private HomeMemoryRecentChangeSource()
     {
@@ -123,7 +123,7 @@ public sealed class HomeMemoryRecentChangeSource : IRecentChangeSource
     {
         using var conn = FirebirdDb.OpenConnection();
         var includeElements = requestedType.Length == 0 || requestedType == "element";
-        var includeConnections = requestedType.Length == 0 || requestedType == "connection";
+        var includeConnections = requestedType.Length == 0 || requestedType == "line";
         var includeCategories = requestedType.Length == 0 || requestedType == "category";
 
         var cteParts = new List<string>();
@@ -148,7 +148,7 @@ public sealed class HomeMemoryRecentChangeSource : IRecentChangeSource
             unions.Add("""
                 SELECT
                     c."Name" AS ITEM_NAME,
-                    'connection' AS ITEM_TYPE,
+                    'line' AS ITEM_TYPE,
                     ce."CreatedOn",
                     ce."UpdatedOn",
                     COALESCE(ce."UpdatedOn", ce."CreatedOn") AS CHANGE_TS

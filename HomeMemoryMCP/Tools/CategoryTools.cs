@@ -39,7 +39,7 @@ public static class CategoryTools
     /// Rolls up the direct per-category counts from <see cref="LoadCatTree"/> over each category's
     /// subtree (self + descendant categories), keyed by <see cref="FirebirdDb.OidKey"/>. Because every
     /// item has exactly one category, a subtree sum involves no double counting. These totals match
-    /// what get_by_category (elements) and get_connections (connections) return for the category, since
+    /// what get_by_category (elements) and get_lines (lines) return for the category, since
     /// both resolve descendant categories too.
     /// </summary>
     private static Dictionary<string, (long elem, long conn, long pt, long other)> ComputeCategoryRollups(List<Row> rows)
@@ -88,12 +88,12 @@ public static class CategoryTools
 
     [McpServerTool(Name = "list_categories", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
-        "Lists all object categories with item counts (elements, connections, part types, and other items, shown when non-zero). " +
-        "Counts cover the category and its subcategories, matching what get_by_category and get_connections return; " +
+        "Lists all object categories with item counts (elements, lines, part types, and other items, shown when non-zero). " +
+        "Counts cover the category and its subcategories, matching what get_by_category and get_lines return; " +
         "when a count includes both direct and subcategory items, the directly-classified share is also shown as '; N direct'. " +
         "Categories classify both elements (physical items: equipment, furniture, fixtures) " +
-        "and connections (physical lines: pipes, cables, ducts). " +
-        "IMPORTANT: Call this before create_element or create_connection to pick the right category. " +
+        "and lines such as pipes, cables, and ducts. " +
+        "IMPORTANT: Call this before create_element or create_line to pick the right category. " +
         "If no suitable category exists, use create_category first. " +
         "Primary area categories (Building, Floor, Room, ...) are marked with [primary area]. " +
         "When a category has a short name, its path segment uses that short name " +
@@ -119,7 +119,7 @@ public static class CategoryTools
                 var label  = !string.IsNullOrEmpty(sn) && sn != name ? $"{name} ({sn})" : name;
                 bool isPrimaryArea = FirebirdDb.IsTrue(r.GetValueOrDefault("IsAreaCategory"));
                 // Counts cover the whole subtree (category + subcategories), matching what
-                // get_by_category / get_connections return. When a parent also has items of its own,
+                // get_by_category / get_lines return. When a parent also has items of its own,
                 // the directly-classified share is appended so the headline never understates a parent.
                 long de  = r.Long("ELEM_COUNT");
                 long dc  = r.Long("CONN_COUNT");
@@ -267,7 +267,7 @@ public static class CategoryTools
     [McpServerTool(Name = "get_category_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
         "Full details of a single object category: path, parent, primary area flag, " +
-        "direct and subtree item counts (elements, connections, part types, other; subtree spans subcategories at any depth), " +
+        "direct and subtree item counts (elements, lines, part types, other; subtree spans subcategories at any depth), " +
         "purpose, note, description, and user manual. " +
         "Identify by full path (e.g. 'Electrical/Cable'), unambiguous name/short name, or stable OID. " +
         "update_category requires calling this first before modifying purpose, note, description, or user_manual. " +
@@ -350,7 +350,7 @@ public static class CategoryTools
             var descendantCount = FirebirdDb.CountResult(descRows);
 
             // Subtree usage: this category plus all descendant categories — matches what
-            // get_by_category / get_connections return (both resolve descendants).
+            // get_by_category / get_lines return (both resolve descendants).
             var subtreeRows = FirebirdDb.ExecuteQuery(conn, """
                 WITH RECURSIVE SUBCAT AS (
                     SELECT "Oid" FROM "Category" WHERE "Oid" = ?
@@ -387,7 +387,7 @@ public static class CategoryTools
             {
                 var parts = new List<string>();
                 if (el > 0) parts.Add($"{el} element{(el == 1 ? "" : "s")}");
-                if (cn > 0) parts.Add($"{cn} connection{(cn == 1 ? "" : "s")}");
+                if (cn > 0) parts.Add($"{cn} line{(cn == 1 ? "" : "s")}");
                 if (p  > 0) parts.Add($"{p} part type{(p == 1 ? "" : "s")}");
                 if (ot > 0) parts.Add($"{ot} other");
                 return parts.Count > 0 ? string.Join(", ", parts) : "none";
@@ -673,14 +673,14 @@ public static class CategoryTools
 
     [McpServerTool(Name = "create_category", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false)]
     [Description(
-        "Creates a new object category. Use this when no suitable category exists for a new element or connection. " +
+        "Creates a new object category. Use this when no suitable category exists for a new element or line. " +
         "Required: name. Optional: parent (full category path, e.g. 'Electrical'), " +
         "short_name, purpose, note, description, user_manual, " +
         "is_primary_area (default false – primary areas are the main location containers " +
         "shown in the default structure overview, like Building/Floor/Room, not trades or surface zones). " +
         "Field choice: short temporary to-do -> note (single line, 200 chars); permanent technical info -> description (multiline, 4000 chars); documentation guide for this category -> user_manual (multiline, 4000 chars). " +
         "Forbidden characters in name/short_name: $*[{}]|\\<>?\"/;: and tab. " +
-        "After creating, use the returned category path in create_element or create_connection.")]
+        "After creating, use the returned category path in create_element or create_line.")]
     public static string CreateCategory(
         [Description("Category name, e.g. 'Pool Technology' or 'Solar'")] string name,
         [Description("Full path of the parent category, e.g. 'Heating' or 'Electrical/Low-Voltage'. Empty = top-level.")] string? parent = null,
@@ -815,8 +815,8 @@ public static class CategoryTools
         "Identify by full path, unambiguous name/short name, or stable OID. Pass expected_version from get_category_details to prevent deleting a concurrently changed category. " +
         "Blocked if: (1) documents are attached to the category, remove them first; " +
         "(2) the category has child categories, ask the user how to handle them first; " +
-        "(3) any element, connection, or part type references this category, ask the user how to handle them first " +
-        "(use get_by_category for elements, get_connections for connections; part type references are not directly discoverable via MCP). " +
+        "(3) any element, line, or part type references this category, ask the user how to handle them first " +
+        "(use get_by_category for elements, get_lines for lines; part type references are not directly discoverable via MCP). " +
         "When deletion fails for any of these reasons, treat it as a stop signal: report the blocked scope and ask for explicit confirmation before taking further steps. " +
         "Warning: any purpose, note, description, or user manual stored on the category will be lost. " +
         "If the full path is not known, call list_categories first. " +
@@ -872,14 +872,14 @@ public static class CategoryTools
             {
                 var parts = new List<string>();
                 if (elemCount  > 0) parts.Add($"{elemCount} element{(elemCount == 1 ? "" : "s")}");
-                if (connCount  > 0) parts.Add($"{connCount} connection{(connCount == 1 ? "" : "s")}");
+                if (connCount  > 0) parts.Add($"{connCount} line{(connCount == 1 ? "" : "s")}");
                 if (ptCount    > 0) parts.Add($"{ptCount} part type{(ptCount == 1 ? "" : "s")}");
                 if (otherCount > 0) parts.Add($"{otherCount} other item{(otherCount == 1 ? "" : "s")}");
                 var breakdown = string.Join(", ", parts);
 
                 var hints = new List<string>();
                 if (elemCount  > 0) hints.Add($"call get_by_category('{category}') to locate the elements");
-                if (connCount  > 0) hints.Add($"call get_connections(category='{category}') to locate the connections");
+                if (connCount  > 0) hints.Add($"call get_lines(category='{category}') to locate the lines");
                 if (ptCount    > 0) hints.Add("part type references cannot be discovered via MCP tools directly");
                 if (otherCount > 0) hints.Add("other referenced items are not currently manageable via MCP");
 
