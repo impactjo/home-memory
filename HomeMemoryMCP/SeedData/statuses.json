@@ -1,5 +1,8 @@
 [
-  { "name": "Existing",  "type": 0 },
-  { "name": "Planned",   "type": 1 },
-  { "name": "Removed",   "type": 2 }
+  { "name": "Existing",            "type": 0 },
+  { "name": "In use",              "type": 0 },
+  { "name": "Out of service",      "type": 0 },
+  { "name": "Under consideration", "type": 1 },
+  { "name": "Planned",             "type": 1 },
+  { "name": "Removed",             "type": 2 }
 ]
