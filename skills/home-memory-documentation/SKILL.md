@@ -36,4 +36,4 @@ Apply the principles and Home Memory field mapping from that reference. Read onl
 
 HomeMemoryMCP is required for inspecting or changing the live documentation. If it is unavailable, use supplied information for advice and identify what could not be checked or saved. Conceptual explanations do not require a connection or a preliminary tool call.
 
-Respond in the user's language. State the decision or completed change and any material unresolved information; avoid a full field tour for a small task.
+Respond in the user's language, using concise, natural terms instead of internal field keys, parameter names or tool names. Prefer known product labels; otherwise translate a clear field meaning naturally. Keep exact internal interface identifiers in tool calls and mention them to the user only when explicitly requested or needed for troubleshooting. State the decision or completed change and any material unresolved information; avoid a full field tour for a small task.
