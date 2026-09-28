@@ -460,7 +460,8 @@ public static class SchemaMigrationEngine
         bool createBackup = true,
         DatabaseMaintenanceSession? maintenanceSession = null,
         bool commitBeforeVerification = false,
-        Action<FbConnection, FbTransaction>? compensate = null)
+        Action<FbConnection, FbTransaction>? compensate = null,
+        Action<FbConnection, FbTransaction>? migrateData = null)
     {
         using var ownedSession = maintenanceSession is null ? DatabaseMaintenanceSession.Acquire() : null;
         var session = maintenanceSession ?? ownedSession!;
@@ -545,6 +546,10 @@ public static class SchemaMigrationEngine
             {
                 if (!exists && !commitBeforeVerification)
                     apply(connection, transaction);
+                // Data migration runs after committed DDL, when new metadata is visible,
+                // and commits atomically with verification and the registry entry.
+                if (!exists)
+                    migrateData?.Invoke(connection, transaction);
                 verifyAfterMigration(connection, transaction);
                 SchemaRegistry.Insert(connection, transaction, entry, appliedBy, applicationVersion);
                 transaction.Commit();
