@@ -4,6 +4,15 @@ namespace HomeMemory.MCP.Db;
 
 public static class FirebirdDb
 {
+    private static readonly Lock WriteLock = new();
+
+    /// <summary>
+    /// Serializes tool writes within this process. Acquire before the first database
+    /// read and keep the scope until the write transaction has committed or rolled back.
+    /// Other processes still require database-level concurrency protection.
+    /// </summary>
+    public static Lock.Scope AcquireWriteLock() => WriteLock.EnterScope();
+
     /// <summary>
     /// Resolves the Firebird client DLL path and sets the FIREBIRD env var
     /// so the embedded engine finds its runtime files (firebird.msg, ICU DLLs, etc.).

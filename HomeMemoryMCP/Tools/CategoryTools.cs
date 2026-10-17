@@ -503,6 +503,7 @@ public static class CategoryTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn  = FirebirdDb.OpenConnection();
             var allCats     = LoadCatTree(conn);
 
@@ -719,6 +720,7 @@ public static class CategoryTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
 
             // Load all categories to resolve parent and check uniqueness
@@ -832,6 +834,7 @@ public static class CategoryTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn  = FirebirdDb.OpenConnection();
             var selection = QueryHelpers.ResolveCategorySelector(conn, category, oid);
             if (selection.Error != null) return selection.Error;

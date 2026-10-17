@@ -254,6 +254,7 @@ public static class ElementTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
@@ -396,6 +397,7 @@ public static class ElementTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
             var (_, byOid, byFullName) = QueryHelpers.LoadEtree(conn);
             var resolution = QueryHelpers.ResolveElementSelector(byOid, byFullName, fullname, oid);
@@ -577,6 +579,7 @@ public static class ElementTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
             var (_, byOid, byFullName) = QueryHelpers.LoadEtree(conn);
             var resolution = QueryHelpers.ResolveElementSelector(byOid, byFullName, fullname, oid);
@@ -658,6 +661,7 @@ public static class ElementTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
             var (_, byOid, byFullName) = QueryHelpers.LoadEtree(conn);
             var resolution = QueryHelpers.ResolveElementSelector(byOid, byFullName, fullname, oid);

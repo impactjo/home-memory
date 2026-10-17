@@ -153,6 +153,7 @@ public static class StatusTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
 
             var selection = ResolveStatusSelector(conn, name, oid);
@@ -266,6 +267,7 @@ public static class StatusTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
 
             // Name must be globally unique
@@ -316,6 +318,7 @@ public static class StatusTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn  = FirebirdDb.OpenConnection();
             var selection = ResolveStatusSelector(conn, name, oid);
             if (selection.Error != null) return selection.Error;

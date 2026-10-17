@@ -421,6 +421,7 @@ public static class ConnectionTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
 
@@ -569,6 +570,7 @@ public static class ConnectionTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
             var resolution = QueryHelpers.ResolveConnectionSelector(
@@ -760,6 +762,7 @@ public static class ConnectionTools
 
         try
         {
+            using var writeScope = FirebirdDb.AcquireWriteLock();
             using var conn = FirebirdDb.OpenConnection();
             var (_, _, byFullName) = QueryHelpers.LoadEtree(conn);
             var resolution = QueryHelpers.ResolveConnectionSelector(

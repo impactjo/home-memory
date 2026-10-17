@@ -514,6 +514,13 @@ public static class SchemaMigrationEngine
 
             verifyBeforeMigration(connection);
             exists = targetExists(connection);
+            // Only the registry entry proves that data migration committed. Existing
+            // schema can also be the result of an interrupted, separately committed DDL.
+            if (exists && migrateData != null)
+                throw new InvalidOperationException(
+                    $"Schema migration '{entry.Component}'/{entry.MigrationId} has an existing target " +
+                    "but no completion entry. Data migration completion cannot be established. " +
+                    "Restore the database from the pre-migration backup before retrying.");
         }
 
         DatabaseBackup? backup = createBackup
@@ -548,8 +555,7 @@ public static class SchemaMigrationEngine
                     apply(connection, transaction);
                 // Data migration runs after committed DDL, when new metadata is visible,
                 // and commits atomically with verification and the registry entry.
-                if (!exists)
-                    migrateData?.Invoke(connection, transaction);
+                migrateData?.Invoke(connection, transaction);
                 verifyAfterMigration(connection, transaction);
                 SchemaRegistry.Insert(connection, transaction, entry, appliedBy, applicationVersion);
                 transaction.Commit();
