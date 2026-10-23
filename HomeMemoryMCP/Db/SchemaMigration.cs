@@ -327,7 +327,7 @@ public static class DatabaseLifecycleLease
         }
     }
 
-    private static string GetLeasePath(string databasePath) =>
+    internal static string GetLeasePath(string databasePath) =>
         Path.GetFullPath(databasePath) + ".schema-maintenance.lock";
 }
 

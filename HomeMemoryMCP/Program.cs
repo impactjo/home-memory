@@ -52,8 +52,6 @@ try
     }
 
     bool databaseCreated = FirstRunSetup.EnsureDatabase();
-    if (databaseCreated)
-        DbMigrator.InitializeNewDatabase();
 
     servingLease = DatabaseLifecycleLease.AcquireServing();
 
@@ -71,9 +69,6 @@ try
         Console.Error.WriteLine(
             $"[HomeMemory] Database is currently unavailable; starting with tools in retry mode: {ex.Message}");
     }
-
-    if (databaseCreated)
-        DbSeeder.SeedIfEmpty();
 }
 catch (Exception ex) when (
     ex is DatabaseUnavailableException or FirebirdSql.Data.FirebirdClient.FbException)

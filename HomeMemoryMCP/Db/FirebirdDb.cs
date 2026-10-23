@@ -39,12 +39,39 @@ public static class FirebirdDb
         return clientLibPath;
     }
 
+    private static string? _dbPathOverride;
+
+    /// <summary>
+    /// Points all connections of this process at another local database file until the
+    /// returned scope is disposed. First-run setup uses it to prepare a new database under
+    /// a staging name before it becomes visible at the configured path.
+    /// </summary>
+    internal static IDisposable UseDatabasePath(string path)
+    {
+        _dbPathOverride = path;
+        DbConfig.Reset();
+        return new DatabasePathScope();
+    }
+
+    private sealed class DatabasePathScope : IDisposable
+    {
+        public void Dispose()
+        {
+            FbConnection.ClearAllPools();
+            _dbPathOverride = null;
+            DbConfig.Reset();
+        }
+    }
+
     /// <summary>
     /// Returns the DB path from HOME_MEMORY_DB_PATH env var,
     /// or the default %LOCALAPPDATA%\HomeMemory\homememory.scd.
     /// </summary>
     public static string GetDbPath()
     {
+        if (_dbPathOverride != null)
+            return _dbPathOverride;
+
         var env = Environment.GetEnvironmentVariable("HOME_MEMORY_DB_PATH");
         if (!string.IsNullOrWhiteSpace(env))
             return env.Trim();
