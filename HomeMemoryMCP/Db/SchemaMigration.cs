@@ -689,6 +689,9 @@ public static class SchemaMigrationEngine
         using (var stream = new FileStream(backupPath, FileMode.Open, FileAccess.Read, FileShare.Read))
             hash = Convert.ToHexString(SHA256.HashData(stream));
 
+        // Reported before any change, so a later failure still names the restore point.
+        Console.Error.WriteLine($"[Database] Verified backup before migration: {backupPath}");
+        Console.Error.WriteLine($"[Database] Backup SHA-256: {hash}");
         return new DatabaseBackup(backupPath, backupFile.Length, hash);
     }
 }

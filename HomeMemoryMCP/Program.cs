@@ -30,16 +30,9 @@ try
             throw new FileNotFoundException($"Database not found: {FirebirdDb.GetDbPath()}");
 
         var result = DbMigrator.MigrateDatabase();
-        if (result.Changed)
-        {
-            Console.Error.WriteLine("[HomeMemory] Schema migration completed.");
-            Console.Error.WriteLine($"[HomeMemory] Backup: {result.Backup!.Path}");
-            Console.Error.WriteLine($"[HomeMemory] Backup SHA-256: {result.Backup.Sha256}");
-        }
-        else
-        {
-            Console.Error.WriteLine("[HomeMemory] Schema is already registered. No changes were made.");
-        }
+        Console.Error.WriteLine(result.Changed
+            ? "[HomeMemory] Schema migration completed."
+            : "[HomeMemory] Schema is already registered. No changes were made.");
         return;
     }
 
