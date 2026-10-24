@@ -153,6 +153,18 @@ Use these placements:
 
 Use `note` for brief temporary information, such as an unresolved check. An enduring intended use belongs in `purpose`. For example, `For a future socket` describes why a conduit exists; it does not mean that installing the socket is currently an open task or that the conduit is confirmed empty. Remove or update a temporary note once the work or check is complete. A confirmed completed job should not remain as an open to-do.
 
+### 3.4 Document and image files
+
+For a concrete file organization question, consider how the user will later find and use the material. Reuse useful existing conventions and suggest targeted improvements when they help with the current task.
+
+If no filing system exists, a shared home folder with documents and photos can provide a simple starting point. Organizing construction photos by date can help when the user wants to find construction stages or changes over time. For manuals, identifying the device or model in a readable filename or title makes retrieval easier. Choose examples suited to the material; the folder structure does not need to mirror the element tree.
+
+Keep it clear which file the documentation refers to. Copies can be useful for making the home documentation usable and transferable on its own. Account for existing references when moving or renaming files; a reference replaces neither the file nor its backup.
+
+Base content-related associations on inspected contents or explicit, unambiguous user information. Filenames, titles, and storage locations provide clues. Add further associations when they help with retrieval or understanding in the current task.
+
+Home Memory MCP currently has no tools for managing document or image assignments. Use this guidance for advice and interpretation without implying that such assignments can be saved through Home Memory MCP.
+
 ## 4. Explaining a decision
 
 Explain only the decision needed for the current task. For example:

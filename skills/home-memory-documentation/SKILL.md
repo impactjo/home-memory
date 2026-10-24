@@ -22,6 +22,7 @@ Read the relevant sections of the [documentation model](references/documentation
 - Sections 1.1 to 1.3 for locations, components, physical runs, categories, and statuses.
 - Sections 2.1 to 2.4 for record boundaries, examples, and refining existing documentation.
 - Sections 3.1 to 3.3 for information placement; section 4 for explaining a decision to the user.
+- Section 3.4 for concrete questions about organizing document and image files or relating their contents to documented objects.
 
 Apply the principles and Home Memory field mapping from that reference. Read only the sections needed for the current decision.
 
