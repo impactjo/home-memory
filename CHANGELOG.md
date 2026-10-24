@@ -2,6 +2,73 @@
 
 Notable changes per release. Download builds from the [releases page](https://github.com/impactjo/home-memory/releases).
 
+## v0.6.0: Line tools, documentation skill and data integrity fixes (2026-10-24)
+
+### Breaking changes
+
+Physical runs such as cables, pipes, ducts, and conduits are now called lines in
+the MCP interface. The five connection tools have been renamed without aliases:
+
+| Previous name | New name |
+|---|---|
+| `get_connections` | `get_lines` |
+| `get_connection_details` | `get_line_details` |
+| `create_connection` | `create_line` |
+| `update_connection` | `update_line` |
+| `delete_connection` | `delete_line` |
+
+- `get_recent_changes` now accepts `type="line"` instead of `type="connection"`
+  and labels those results as lines. The old filter value is rejected.
+- `get_structure_overview(metrics="counts")` now uses `[b… l… x…]` instead of
+  `[b… c… x…]`. The counts retain their meaning: elements below the node, lines
+  touching its subtree, and lines crossing its boundary.
+
+Refresh your client's tool list and update saved tool calls, prompts, and output
+parsers that use the old names. Existing line records and their OIDs are unchanged.
+
+### Bundled documentation skill
+
+The Windows ZIP now includes the optional `skills/home-memory-documentation`
+directory with its `SKILL.md` and documentation reference. It guides assistants
+on record boundaries, physical lines, evidence, and where information belongs.
+
+Install that directory as a user-level skill in a client that supports Agent
+Skills. It complements the MCP tools; clients without skill support can continue
+using the server. The README includes installation guidance.
+
+### Improvements
+
+- Upgraded `ModelContextProtocol` and `ModelContextProtocol.AspNetCore` to 2.2.0.
+  HTTP mode keeps sessions for clients that use the initialize handshake.
+- Unknown argument names and missing required arguments are reported before tool
+  binding, with accepted names and a correction hint when the name identifies one.
+- `get_element_details` and `get_line_details` show full category paths, category
+  OIDs, and flags indicating which category text fields contain information.
+- New databases include `In use`, `Out of service`, and `Under consideration`
+  alongside `Existing`, `Planned`, and `Removed`. Existing databases are not
+  reseeded.
+- Client setup and troubleshooting guidance was revised, including connection
+  verification and the distinction between local and cloud sessions.
+
+### Fixes
+
+- Tool writes are serialized within one server process, so concurrent create and
+  move calls cannot bypass duplicate and hierarchy checks. This does not provide
+  coordination between separate server processes.
+- A database that becomes unavailable after startup returns a clear tool error
+  with retry instructions instead of a raw Firebird I/O error.
+- The migration engine supports data updates after schema changes. Data updates,
+  verification, and the completion entry commit together. A migration with data
+  updates stops if its target schema already exists without a completion entry,
+  and instructs the user to restore the pre-migration backup before retrying.
+- The first start prepares, registers, and seeds a new database under a temporary
+  name in the target folder and only then moves it to the configured path. An
+  interrupted first start no longer leaves an incomplete database behind, and
+  concurrent first starts use the database created by whichever finishes first.
+- A migration reports the path and SHA-256 of its verified backup on standard
+  error before changing the database, so the restore point is known even if a
+  later step fails.
+
 ## v0.5.0: Stable IDs and safer database handling (2026-08-21)
 
 ### Stable IDs and conflict-safe writes
