@@ -20,27 +20,35 @@
 
 ---
 
-Home Memory is an [MCP server](https://modelcontextprotocol.io/) that gives your AI assistant structured, persistent knowledge about your home: every room, every device, every pipe and cable, every item you own.
+Home Memory MCP is a free, standalone, open-source [MCP server](https://modelcontextprotocol.io/) that gives your AI assistant structured, persistent knowledge about your home: rooms, devices, pipes, cables, and the things you own. This repository contains that server.
 
 It works with the ChatGPT desktop app, Claude Desktop, Claude Code, Codex CLI, and other MCP-compatible AI apps. You talk naturally; the AI reads and writes your home data through Home Memory's tools.
 
 Document what exists, plan what's coming, and keep track of what's been removed.
 
-No app to learn. No forms to fill out. Your home data stays in a single file on your machine, and the AI *is* your interface.
+Your assistant is the interface for this MCP workflow. Your home data stays in a single file on your machine; depending on your assistant, information it reads may be sent to its AI provider.
 
-Tell your AI about your heat pump, your car, your power tools, or your wine collection, and it extracts the relevant details and stores them as structured data in your local database. Snap a photo of a device or hand it an invoice. Same result. Ask "What's in the basement?" or "When is my car due for inspection?" and get answers from real data.
+Looking for a Windows workspace with linked photos and documents, reusable product information, and maintenance work orders? [Home Memory Studio](https://home-memory.com/studio/) includes those features and its own expanded MCP. It works independently, with no separate Home Memory MCP installation required. Studio is proprietary software and free during Early Access. Its [Windows download](https://home-memory.com/studio/#download) is available on the Studio page.
 
-<p align="center">
-  <img src="docs/demo.png" width="700" alt="Demo in Claude Desktop: One sentence creates two elements. The AI finds the right categories, creates a missing room, and documents everything.">
-  <br>
-  <em>Claude Desktop (Anthropic)</em>
-</p>
+Already using this MCP and considering Studio? Follow the [guide for bringing your existing documentation](https://home-memory.com/studio/guide/#from-home-memory), including a separate database copy and the Studio MCP setup.
 
-<p align="center">
-  <img src="docs/demo-codex.png" width="700" alt="Demo with Codex: Same prompt, same result, works across AI clients.">
-  <br>
-  <em>Codex (OpenAI)</em>
-</p>
+## From a new plan to useful house knowledge
+
+In this fictional home, two empty conduits from the basement utility room to the east facade are already documented. The air conditioner has just been ordered, with installation still ahead.
+
+**1. Record the plan with the order confirmation:**
+
+> We've ordered this air conditioner for the living and dining room. The outdoor unit will go on the east facade. Please document the planned installation.
+
+The assistant records the Daikin FTXM35A indoor unit and RXM35A outdoor unit at their intended locations, both marked as planned.
+
+**2. Start a new conversation:**
+
+> Which AC did we choose, and do we have any spare conduits from the utility room to its planned outdoor location? Include their routes and recorded diameters.
+
+The assistant retrieves the selected models and the two free 20 m conduits, with recorded nominal outside diameters of 25 and 40 mm. Both follow the basement ceiling and east service riser to the facade. The new plan and the existing house record come together without copying the old conversation. These are documented routes to discuss with an installer, not a guarantee of suitability.
+
+This example uses the standalone MCP. The [Studio examples](https://home-memory.com/studio/#in-practice) show a later stage of the same fictional home, with the AC installed.
 
 ## What you can do
 
@@ -64,6 +72,8 @@ Vision-capable AIs recognize the device and create the element via MCP.
 **Read an invoice and extract devices:**
 > *(attach a PDF invoice)* "Extract the installed devices and add them to my home."
 
+Your AI client reads the attachment and records the relevant details. The standalone MCP does not store the uploaded photo or PDF as a linked file; Studio provides linked images and documents.
+
 **Track lines between elements:**
 > "The circuit breaker panel feeds the kitchen outlet via NYM-J 3x1.5."
 
@@ -75,6 +85,8 @@ Cable routes, pipe runs, and duct paths, all documented as lines between element
 Track what's planned, what exists, and what's been removed.
 
 ## Quick Start (Windows)
+
+This installs the standalone Home Memory MCP. For Studio and its included MCP, use the [Studio getting started guide](https://home-memory.com/studio/guide/) instead.
 
 The release ZIP is self-contained. No .NET or Firebird installation is required. You need one of the local AI clients listed below.
 
